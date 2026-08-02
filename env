@@ -1,0 +1,5 @@
+DATABASE_URL="postgresql://postgres:XDBFPcixM6y3eths@localhost:35432/ctrlcontratos"
+DATABASE_SSL="false"
+JWT_SECRET="8109425925cfbdb5d29550c167c1fdf9f28905eda7f89113f54a169e70d9fdb6"
+PORT=3000
+PUBLIC_URL="https://contratos.pajotech.com.br"
