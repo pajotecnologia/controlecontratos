@@ -1,15 +1,72 @@
 const nodemailer = require("nodemailer");
 const db = require("./db");
+const { buildReciboPdf } = require("./pdf");
 
-function applyTemplate(template, vv) {
+function applyTemplate(template, ctx) {
+  return (template || "").replace(/\{\{(\w+)\}\}/g, (_, k) => {
+    if (k in ctx) return ctx[k] ?? "";
+    // legacy aliases
+    if (k === "vendedor") return ctx.vendedor_nome || ctx.vendedor || "";
+    if (k === "cliente") return ctx.cliente_nome || ctx.cliente || ctx.venda_cliente || "";
+    if (k === "valor") return ctx.valor_comissao_fmt || ctx.valor || "";
+    return "";
+  });
+}
+
+function buildCtxFromVV(vv) {
   const clienteNome = vv.cliente_nome || vv.venda_cliente || "";
-  return (template || "")
-    .replace(/\{\{vendedor\}\}/g, vv.vendedor_nome || "")
-    .replace(/\{\{valor\}\}/g, Number(vv.valor_comissao).toLocaleString("pt-BR", { minimumFractionDigits: 2 }))
-    .replace(/\{\{percentual\}\}/g, String(vv.percentual))
-    .replace(/\{\{cliente\}\}/g, clienteNome)
-    .replace(/\{\{valor_servico\}\}/g, Number(vv.valor_servico || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 }))
-    .replace(/\{\{mes_referencia\}\}/g, vv.mes_referencia || "");
+  return {
+    vendedor: vv.vendedor_nome || "",
+    vendedor_nome: vv.vendedor_nome || "",
+    valor: Number(vv.valor_comissao).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+    valor_comissao_fmt: Number(vv.valor_comissao).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+    percentual: String(vv.percentual),
+    cliente: clienteNome,
+    cliente_nome: clienteNome,
+    valor_servico: Number(vv.valor_servico || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+    mes_referencia: vv.mes_referencia || "",
+  };
+}
+
+async function sendWhatsAppEvento(numero, evento, ctx, fallbackMsg) {
+  const { rows } = await db.query("SELECT * FROM evolution_settings LIMIT 1");
+  const ev = rows[0];
+  if (!ev || !ev.instance_url || !ev.api_key || !ev.instance_name) {
+    throw new Error("Evolution API não configurada");
+  }
+  let whatsapp = (numero || "").replace(/\D/g, "");
+  if (!whatsapp) throw new Error("Número de WhatsApp não informado");
+  if (!whatsapp.startsWith("55")) whatsapp = "55" + whatsapp;
+
+  const templates = await getTemplatesForEvent(evento, "whatsapp");
+  const body = templates.length > 0 ? templates[0] : fallbackMsg;
+  const message = applyTemplate(body, ctx);
+
+  const instanceUrl = ev.instance_url.replace(/\/$/, "");
+  const res = await fetch(`${instanceUrl}/message/sendText/${ev.instance_name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: ev.api_key },
+    body: JSON.stringify({ number: whatsapp, text: message }),
+  });
+  const result = await res.json();
+  return { success: true, result };
+}
+
+async function sendEmailEvento(emailTo, evento, ctx, subject, fallbackMsg) {
+  const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
+  const smtp = rows[0];
+  if (!smtp || !smtp.host || !smtp.username || !smtp.password) throw new Error("SMTP não configurado");
+  const transporter = nodemailer.createTransport({
+    host: smtp.host, port: smtp.port, secure: smtp.port === 465,
+    auth: { user: smtp.username, pass: smtp.password },
+    tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
+  });
+  const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
+  const templates = await getTemplatesForEvent(evento, "email");
+  const body = templates.length > 0 ? templates[0] : fallbackMsg;
+  const message = applyTemplate(body, ctx);
+  await transporter.sendMail({ from, to: emailTo, subject, text: message, html: message.replace(/\n/g, "<br>") });
+  return { success: true };
 }
 
 async function loadVendaVendedor(id) {
@@ -73,7 +130,8 @@ async function sendWhatsApp(venda_vendedor_id, template_type = "pagamento") {
 
 async function loadParcelaRecibo(parcela_id) {
   const { rows } = await db.query(
-    `SELECT p.id, p.numero_parcela, p.valor, p.data_vencimento, p.data_pagamento, p.numero_nf, p.mes_referencia,
+    `SELECT p.id, p.numero_parcela, p.valor, p.data_vencimento, p.data_pagamento, p.pago, p.numero_nf, p.mes_referencia,
+            p.asaas_cobranca_id, p.asaas_boleto_url, p.asaas_pix_copy_paste, p.asaas_invoice_url,
             v.cliente AS venda_cliente, v.valor_servico,
             c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.email AS cliente_email
        FROM parcelas p
@@ -113,9 +171,10 @@ function buildReciboText(p, comp) {
   return msg;
 }
 
-async function sendReceiptWhatsApp(parcela_id) {
+async function sendReceiptWhatsApp(parcela_id, baseUrl, mensagem) {
   const p = await loadParcelaRecibo(parcela_id);
   if (!p) throw new Error("Parcela não encontrada");
+  if (!p.pago) throw new Error("Recibo disponível apenas para parcela quitada");
 
   const { rows: compRows } = await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, logo_url FROM company_settings LIMIT 1");
   const comp = compRows[0] || null;
@@ -130,12 +189,21 @@ async function sendReceiptWhatsApp(parcela_id) {
   if (!whatsapp) throw new Error("Cliente sem telefone cadastrado");
   if (!whatsapp.startsWith("55")) whatsapp = "55" + whatsapp;
 
-  const message = buildReciboText(p, comp);
+  const message = (mensagem && mensagem.trim()) ? mensagem.trim() : buildReciboText(p, comp);
+  const clienteNome = p.cliente_nome || p.venda_cliente || "";
+  const pdfBuffer = await buildReciboPdf(p, comp, baseUrl);
   const instanceUrl = settings.instance_url.replace(/\/$/, "");
-  const response = await fetch(`${instanceUrl}/message/sendText/${settings.instance_name}`, {
+  const response = await fetch(`${instanceUrl}/message/sendMedia/${settings.instance_name}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: settings.api_key },
-    body: JSON.stringify({ number: whatsapp, text: message }),
+    body: JSON.stringify({
+      number: whatsapp,
+      mediatype: "document",
+      mimetype: "application/pdf",
+      fileName: `recibo-${clienteNome.replace(/[^\w-]+/g, "_") || "cliente"}.pdf`,
+      caption: message,
+      media: pdfBuffer.toString("base64"),
+    }),
   });
   const result = await response.json();
   return { success: true, result };
@@ -187,7 +255,7 @@ function buildReciboHtml(p, comp, logoUrl) {
     </div>`;
 }
 
-async function sendReceiptEmail(parcela_id, baseUrl) {
+async function sendReceiptEmail(parcela_id, baseUrl, mensagem) {
   const p = await loadParcelaRecibo(parcela_id);
   if (!p) throw new Error("Parcela não encontrada");
   if (!p.cliente_email) throw new Error("Cliente sem email cadastrado");
@@ -213,13 +281,23 @@ async function sendReceiptEmail(parcela_id, baseUrl) {
   let logoUrl = comp ? comp.logo_url || "" : "";
   if (logoUrl && logoUrl.startsWith("/")) logoUrl = `${baseUrl || ""}${logoUrl}`;
 
-  const textMessage = buildReciboText(p, comp);
-  const htmlMessage = buildReciboHtml(p, comp, logoUrl);
+  const textMessage = (mensagem && mensagem.trim()) ? mensagem.trim() : buildReciboText(p, comp);
+  let htmlMessage = buildReciboHtml(p, comp, logoUrl);
+  if (mensagem && mensagem.trim()) {
+    const escaped = mensagem.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+    htmlMessage = `<div style="font-family:sans-serif; font-size:14px; color:#1e293b; margin-bottom:16px;">${escaped}</div>` + htmlMessage;
+  }
   const clienteNome = p.cliente_nome || p.venda_cliente || "";
+  const pdfBuffer = await buildReciboPdf(p, comp, baseUrl);
   await transporter.sendMail({
     from, to: p.cliente_email,
     subject: `Recibo de Pagamento - ${clienteNome}`,
     text: textMessage, html: htmlMessage,
+    attachments: [{
+      filename: `recibo-${clienteNome.replace(/[^\w-]+/g, "_") || "cliente"}.pdf`,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    }],
   });
   return { success: true };
 }
@@ -273,4 +351,250 @@ async function sendEmail({ venda_vendedor_id, template_type, test, test_email })
   return { success: true };
 }
 
-module.exports = { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail };
+async function sendWhatsAppDireto(numero, mensagem) {
+  const { rows } = await db.query("SELECT * FROM evolution_settings LIMIT 1");
+  const ev = rows[0];
+  if (!ev || !ev.instance_url || !ev.api_key || !ev.instance_name) throw new Error("Evolution API não configurada");
+  let whatsapp = (numero || "").replace(/\D/g, "");
+  if (!whatsapp) throw new Error("Número não informado");
+  if (!whatsapp.startsWith("55")) whatsapp = "55" + whatsapp;
+  const instanceUrl = ev.instance_url.replace(/\/$/, "");
+  const res = await fetch(`${instanceUrl}/message/sendText/${ev.instance_name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: ev.api_key },
+    body: JSON.stringify({ number: whatsapp, text: mensagem }),
+  });
+  return res.json();
+}
+
+async function sendEmailDireto(emailTo, assunto, mensagem) {
+  const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
+  const smtp = rows[0];
+  if (!smtp || !smtp.host || !smtp.username || !smtp.password) throw new Error("SMTP não configurado");
+  const transporter = nodemailer.createTransport({
+    host: smtp.host, port: smtp.port, secure: smtp.port === 465,
+    auth: { user: smtp.username, pass: smtp.password },
+    tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
+  });
+  const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
+  await transporter.sendMail({ from, to: emailTo, subject: assunto, text: mensagem, html: mensagem.replace(/\n/g, "<br>") });
+  return { success: true };
+}
+
+async function sendCobrancaWhatsApp(parcela_id, mensagemCustomizada) {
+  const p = await loadParcelaRecibo(parcela_id);
+  if (!p) throw new Error("Parcela não encontrada");
+  if (!p.asaas_cobranca_id && !p.asaas_boleto_url && !p.asaas_pix_copy_paste) {
+    throw new Error("Cobrança ASAAS ainda não gerada para esta parcela");
+  }
+
+  const { rows } = await db.query("SELECT * FROM evolution_settings LIMIT 1");
+  const settings = rows[0];
+  if (!settings || !settings.instance_url || !settings.api_key || !settings.instance_name) {
+    throw new Error("Evolution API não configurada");
+  }
+
+  let whatsapp = (p.cliente_telefone || "").replace(/\D/g, "");
+  if (!whatsapp) throw new Error("Cliente sem telefone cadastrado");
+  if (!whatsapp.startsWith("55")) whatsapp = "55" + whatsapp;
+
+  const clienteNome = p.cliente_nome || p.venda_cliente || "Cliente";
+  const valorFmt = Number(p.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const vencFmt = p.data_vencimento ? new Date(p.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+
+  let textoPadrao = `Olá ${clienteNome}, segue cobrança da parcela ${p.numero_parcela}${p.mes_referencia ? " (" + p.mes_referencia + ")" : ""}:\n\n` +
+    `*Valor:* R$ ${valorFmt}\n` +
+    `*Vencimento:* ${vencFmt}\n`;
+
+  if (p.asaas_boleto_url || p.asaas_invoice_url) {
+    textoPadrao += `\n*Link do Boleto:* ${p.asaas_boleto_url || p.asaas_invoice_url}\n`;
+  }
+  if (p.asaas_pix_copy_paste) {
+    textoPadrao += `\n*PIX Copia e Cola:*\n${p.asaas_pix_copy_paste}\n`;
+  }
+
+  const mensagemFinal = mensagemCustomizada && mensagemCustomizada.trim() ? mensagemCustomizada.trim() : textoPadrao;
+
+  const instanceUrl = settings.instance_url.replace(/\/$/, "");
+  const response = await fetch(`${instanceUrl}/message/sendText/${settings.instance_name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: settings.api_key },
+    body: JSON.stringify({ number: whatsapp, text: mensagemFinal }),
+  });
+  const result = await response.json();
+  return { success: true, result };
+}
+
+async function sendCobrancaEmail(parcela_id, mensagemCustomizada) {
+  const p = await loadParcelaRecibo(parcela_id);
+  if (!p) throw new Error("Parcela não encontrada");
+  if (!p.cliente_email) throw new Error("Cliente sem e-mail cadastrado");
+  if (!p.asaas_cobranca_id && !p.asaas_boleto_url && !p.asaas_pix_copy_paste) {
+    throw new Error("Cobrança ASAAS ainda não gerada para esta parcela");
+  }
+
+  const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
+  const smtp = rows[0];
+  if (!smtp || !smtp.host || !smtp.username || !smtp.password) {
+    throw new Error("SMTP não configurado");
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.username, pass: smtp.password },
+    tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
+  });
+  const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
+
+  const clienteNome = p.cliente_nome || p.venda_cliente || "Cliente";
+  const valorFmt = Number(p.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const vencFmt = p.data_vencimento ? new Date(p.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+  const linkBoleto = p.asaas_boleto_url || p.asaas_invoice_url;
+
+  let htmlBody = `
+    <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 8px;">Cobrança de Parcela</h2>
+      <p>Olá <strong>${clienteNome}</strong>,</p>
+      <p>Segue os detalhes da cobrança para a parcela <strong>${p.numero_parcela}</strong>${p.mes_referencia ? ` (${p.mes_referencia})` : ""}:</p>
+      <div style="background: #f8fafc; padding: 12px; border-radius: 6px; margin: 15px 0;">
+        <div><strong>Valor:</strong> R$ ${valorFmt}</div>
+        <div><strong>Vencimento:</strong> ${vencFmt}</div>
+      </div>
+  `;
+
+  if (linkBoleto) {
+    htmlBody += `
+      <p><a href="${linkBoleto}" target="_blank" style="display: inline-block; background: #0284c7; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visualizar Boleto</a></p>
+    `;
+  }
+  if (p.asaas_pix_copy_paste) {
+    htmlBody += `
+      <div style="margin-top: 15px;">
+        <strong>PIX Copia e Cola:</strong>
+        <textarea readonly style="width: 100%; height: 70px; font-family: monospace; font-size: 12px; margin-top: 5px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">${p.asaas_pix_copy_paste}</textarea>
+      </div>
+    `;
+  }
+
+  if (mensagemCustomizada && mensagemCustomizada.trim()) {
+    const escaped = mensagemCustomizada.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+    htmlBody = `<div style="font-family: sans-serif; font-size: 14px; color: #1e293b; margin-bottom: 16px;">${escaped}</div>` + htmlBody;
+  }
+
+  htmlBody += `</div>`;
+
+  const textBody = mensagemCustomizada && mensagemCustomizada.trim()
+    ? mensagemCustomizada.trim()
+    : `Cobrança de parcela ${p.numero_parcela} - R$ ${valorFmt}. Vencimento: ${vencFmt}.${linkBoleto ? `\nBoleto: ${linkBoleto}` : ""}`;
+
+  await transporter.sendMail({
+    from,
+    to: p.cliente_email,
+    subject: `Cobrança - Parcela ${p.numero_parcela} - ${clienteNome}`,
+    text: textBody,
+    html: htmlBody,
+  });
+
+  return { success: true };
+}
+
+async function sendCobrancaSimplesWhatsApp(parcela_id, mensagemCustomizada) {
+  const p = await loadParcelaRecibo(parcela_id);
+  if (!p) throw new Error("Parcela não encontrada");
+
+  const { rows } = await db.query("SELECT * FROM evolution_settings LIMIT 1");
+  const settings = rows[0];
+  if (!settings || !settings.instance_url || !settings.api_key || !settings.instance_name)
+    throw new Error("Evolution API não configurada");
+
+  let whatsapp = (p.cliente_telefone || "").replace(/\D/g, "");
+  if (!whatsapp) throw new Error("Cliente sem telefone cadastrado");
+  if (!whatsapp.startsWith("55")) whatsapp = "55" + whatsapp;
+
+  const { rows: compRows } = await db.query("SELECT name, cnpj FROM company_settings LIMIT 1");
+  const comp = compRows[0] || null;
+
+  const clienteNome = p.cliente_nome || p.venda_cliente || "Cliente";
+  const valorFmt = Number(p.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const vencFmt = p.data_vencimento ? new Date(p.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+
+  const ctx = {
+    cliente: clienteNome, cliente_nome: clienteNome,
+    parcela: String(p.numero_parcela), numero_parcela: String(p.numero_parcela),
+    valor: valorFmt, vencimento: vencFmt,
+    mes_referencia: p.mes_referencia || "",
+    empresa: (comp && comp.name) || "",
+  };
+
+  const textoPadrao = (comp && comp.name ? `*${comp.name}*\n\n` : "") +
+    `Olá ${clienteNome}, segue cobrança:\n\n` +
+    `*Parcela:* ${p.numero_parcela}${p.mes_referencia ? " (" + p.mes_referencia + ")" : ""}\n` +
+    `*Valor:* R$ ${valorFmt}\n` +
+    `*Vencimento:* ${vencFmt}`;
+
+  const mensagemFinal = applyTemplate(
+    mensagemCustomizada && mensagemCustomizada.trim() ? mensagemCustomizada.trim() : textoPadrao,
+    ctx
+  );
+  const instanceUrl = settings.instance_url.replace(/\/$/, "");
+  const response = await fetch(`${instanceUrl}/message/sendText/${settings.instance_name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: settings.api_key },
+    body: JSON.stringify({ number: whatsapp, text: mensagemFinal }),
+  });
+  const result = await response.json();
+  return { success: true, result };
+}
+
+async function sendCobrancaSimplesEmail(parcela_id, baseUrl, mensagemCustomizada) {
+  const p = await loadParcelaRecibo(parcela_id);
+  if (!p) throw new Error("Parcela não encontrada");
+  if (!p.cliente_email) throw new Error("Cliente sem e-mail cadastrado");
+
+  const { rows: compRows } = await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, logo_url FROM company_settings LIMIT 1");
+  const comp = compRows[0] || null;
+
+  const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
+  const smtp = rows[0];
+  if (!smtp || !smtp.host || !smtp.username || !smtp.password) throw new Error("SMTP não configurado");
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host, port: smtp.port, secure: smtp.port === 465,
+    auth: { user: smtp.username, pass: smtp.password },
+    tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
+  });
+  const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
+
+  const clienteNome = p.cliente_nome || p.venda_cliente || "Cliente";
+  const valorFmt = Number(p.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const vencFmt = p.data_vencimento ? new Date(p.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+
+  const textoPadrao = `Olá ${clienteNome},\n\nSegue cobrança:\n\nParcela: ${p.numero_parcela}${p.mes_referencia ? " (" + p.mes_referencia + ")" : ""}\nValor: R$ ${valorFmt}\nVencimento: ${vencFmt}\n\nAtenciosamente,\n${(comp && comp.name) || ""}`;
+  const textBody = mensagemCustomizada && mensagemCustomizada.trim() ? mensagemCustomizada.trim() : textoPadrao;
+
+  let logoUrl = comp ? comp.logo_url || "" : "";
+  if (logoUrl && logoUrl.startsWith("/")) logoUrl = `${baseUrl || ""}${logoUrl}`;
+  const logoTag = logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:8px;" />` : "";
+  const htmlBody = `<div style="font-family:Arial,sans-serif;color:#1e293b;max-width:540px;margin:0 auto;">
+    ${comp && comp.name ? `<div style="text-align:center;border-bottom:2px solid #334155;padding-bottom:10px;margin-bottom:18px;">${logoTag}<div style="font-size:16px;font-weight:bold;">${comp.name}</div></div>` : ""}
+    <p style="font-size:14px;">Olá <strong>${clienteNome}</strong>,</p>
+    <p style="font-size:14px;">Segue sua cobrança:</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:14px 0;">
+      <tr><td style="padding:6px 8px;color:#64748b;border:1px solid #e2e8f0;">Parcela</td><td style="padding:6px 8px;font-weight:600;border:1px solid #e2e8f0;">${p.numero_parcela}${p.mes_referencia ? " (" + p.mes_referencia + ")" : ""}</td></tr>
+      <tr><td style="padding:6px 8px;color:#64748b;border:1px solid #e2e8f0;">Valor</td><td style="padding:6px 8px;font-weight:600;border:1px solid #e2e8f0;">R$ ${valorFmt}</td></tr>
+      <tr><td style="padding:6px 8px;color:#64748b;border:1px solid #e2e8f0;">Vencimento</td><td style="padding:6px 8px;font-weight:600;border:1px solid #e2e8f0;">${vencFmt}</td></tr>
+    </table>
+    ${mensagemCustomizada && mensagemCustomizada.trim() ? `<p style="font-size:13px;color:#475569;">${mensagemCustomizada.trim().replace(/\n/g, "<br/>")}</p>` : ""}
+  </div>`;
+
+  await transporter.sendMail({
+    from, to: p.cliente_email,
+    subject: `Cobrança - Parcela ${p.numero_parcela} - ${clienteNome}`,
+    text: textBody, html: htmlBody,
+  });
+  return { success: true };
+}
+
+module.exports = { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail, sendCobrancaWhatsApp, sendCobrancaEmail, sendCobrancaSimplesWhatsApp, sendCobrancaSimplesEmail, sendWhatsAppEvento, sendEmailEvento, buildCtxFromVV, sendWhatsAppDireto, sendEmailDireto, applyTemplate };

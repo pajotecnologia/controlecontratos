@@ -33,10 +33,12 @@ const RELATIONS = {
     clientes: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
     company_settings: { table: "company_settings", type: "one", local: "company_id", foreign: "id" },
     modelos: { table: "modelos", type: "one", local: "modelo_id", foreign: "id" },
+    vendedores: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
   },
   propostas: {
     clientes: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
     company_settings: { table: "company_settings", type: "one", local: "company_id", foreign: "id" },
+    vendedores: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
     proposta_itens: { table: "proposta_itens", type: "many", local: "id", foreign: "proposta_id" },
   },
   proposta_itens: {

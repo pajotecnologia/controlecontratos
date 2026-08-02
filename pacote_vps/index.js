@@ -8,7 +8,8 @@ const multer = require("multer");
 const db = require("./db");
 const { signToken, hashPassword, verifyPassword, requireAuth } = require("./auth");
 const { buildQuery, buildInsert, buildUpdate, buildDelete } = require("./query");
-const { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail } = require("./notifications");
+const { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail, sendCobrancaWhatsApp, sendCobrancaEmail, sendCobrancaSimplesWhatsApp, sendCobrancaSimplesEmail, sendWhatsAppEvento, sendEmailEvento, sendWhatsAppDireto, sendEmailDireto, applyTemplate } = require("./notifications");
+const { buildPropostaPdf } = require("./pdf");
 
 const app = express();
 app.use(cors());
@@ -323,6 +324,260 @@ app.delete("/message-templates/:id", requireAuth, async (req, res) => {
 });
 
 // ============================================================================
+// ASAAS — configurações e cobranças
+// ============================================================================
+function asaasBaseUrl(ambiente) {
+  return ambiente === "production"
+    ? "https://www.asaas.com/api/v3"
+    : "https://sandbox.asaas.com/api/v3";
+}
+
+async function asaasRequest(method, path, apiKey, ambiente, body) {
+  const res = await fetch(`${asaasBaseUrl(ambiente)}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "access_token": apiKey },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.errors?.[0]?.description || json.description || "Erro ASAAS");
+  return json;
+}
+
+async function getAsaasSettings() {
+  const { rows } = await db.query("SELECT * FROM asaas_settings LIMIT 1");
+  const s = rows[0];
+  if (!s || !s.api_key || !s.ativo) throw new Error("ASAAS não configurado ou inativo");
+  return s;
+}
+
+// CRUD configurações
+app.get("/asaas/settings", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { rows } = await db.query("SELECT * FROM asaas_settings LIMIT 1");
+    res.json(rows[0] || null);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/asaas/settings", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { api_key, ambiente, ativo, webhook_token } = req.body;
+    const { rows: existing } = await db.query("SELECT id FROM asaas_settings LIMIT 1");
+    let row;
+    if (existing.length) {
+      const { rows } = await db.query(
+        "UPDATE asaas_settings SET api_key=$1, ambiente=$2, ativo=$3, webhook_token=$4, updated_at=now() WHERE id=$5 RETURNING *",
+        [api_key, ambiente || "sandbox", ativo !== false, webhook_token || "", existing[0].id]
+      );
+      row = rows[0];
+    } else {
+      const { rows } = await db.query(
+        "INSERT INTO asaas_settings (api_key, ambiente, ativo, webhook_token) VALUES ($1,$2,$3,$4) RETURNING *",
+        [api_key, ambiente || "sandbox", ativo !== false, webhook_token || ""]
+      );
+      row = rows[0];
+    }
+    res.json(row);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post("/asaas/test", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { api_key, ambiente } = req.body;
+    if (!api_key) return res.status(400).json({ error: "API Key obrigatória" });
+    const data = await asaasRequest("GET", "/myAccount", api_key, ambiente || "sandbox");
+    res.json({ success: true, nome: data.name || data.tradingName || "Conta ASAAS" });
+  } catch (e) { res.status(400).json({ success: false, error: e.message }); }
+});
+
+// Criar ou recriar cobrança ASAAS para uma parcela
+app.post("/asaas/cobranca/:parcelaId", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { parcelaId } = req.params;
+    const { billingType } = req.body; // "BOLETO" | "PIX"
+    const s = await getAsaasSettings();
+
+    const { rows } = await db.query(
+      `SELECT p.*, v.cliente AS venda_cliente, v.valor_servico,
+              c.nome AS cliente_nome, c.cpf_cnpj AS cliente_cpf_cnpj,
+              c.email AS cliente_email, c.telefone AS cliente_telefone
+         FROM parcelas p
+         JOIN vendas v ON v.id = p.venda_id
+         LEFT JOIN clientes c ON c.id = v.cliente_id
+        WHERE p.id = $1`,
+      [parcelaId]
+    );
+    const parcela = rows[0];
+    if (!parcela) return res.status(404).json({ error: "Parcela não encontrada" });
+    if (parcela.pago) return res.status(400).json({ error: "Parcela já está paga" });
+    if (!["BOLETO", "PIX"].includes(billingType)) {
+      return res.status(400).json({ error: "Tipo de cobrança inválido" });
+    }
+
+    if (parcela.asaas_cobranca_id) {
+      try {
+        const existingCharge = await asaasRequest("GET", `/payments/${parcela.asaas_cobranca_id}`, s.api_key, s.ambiente);
+        if (["PENDING", "OVERDUE", "AUTHORIZED"].includes(existingCharge.status)) {
+          await db.query("UPDATE parcelas SET asaas_status=$1 WHERE id=$2", [existingCharge.status, parcelaId]);
+          return res.json({
+            success: true,
+            reused: true,
+            cobranca_id: existingCharge.id,
+            status: existingCharge.status,
+            boleto_url: parcela.asaas_boleto_url || existingCharge.bankSlipUrl || null,
+            invoice_url: parcela.asaas_invoice_url || existingCharge.invoiceUrl || null,
+            pix_qr_code: parcela.asaas_pix_qr_code || null,
+            pix_copy_paste: parcela.asaas_pix_copy_paste || null,
+          });
+        }
+      } catch {
+        // Cobrança ausente ou inválida no ASAAS; uma nova será criada abaixo.
+      }
+    }
+
+    const clienteNome = parcela.cliente_nome || parcela.venda_cliente || "Cliente";
+    const cpfCnpj = (parcela.cliente_cpf_cnpj || "").replace(/\D/g, "");
+
+    // Upsert cliente no ASAAS
+    let asaasCustomerId;
+    if (cpfCnpj) {
+      const search = await asaasRequest("GET", `/customers?cpfCnpj=${cpfCnpj}`, s.api_key, s.ambiente);
+      if (search.data?.length) {
+        asaasCustomerId = search.data[0].id;
+      }
+    }
+    if (!asaasCustomerId) {
+      const customer = await asaasRequest("POST", "/customers", s.api_key, s.ambiente, {
+        name: clienteNome,
+        cpfCnpj: cpfCnpj || undefined,
+        email: parcela.cliente_email || undefined,
+        phone: parcela.cliente_telefone || undefined,
+      });
+      asaasCustomerId = customer.id;
+    }
+
+    // Criar cobrança
+    const charge = await asaasRequest("POST", "/payments", s.api_key, s.ambiente, {
+      customer: asaasCustomerId,
+      billingType: billingType || "PIX",
+      value: Number(parcela.valor),
+      dueDate: parcela.data_vencimento,
+      description: `Parcela ${parcela.numero_parcela}${parcela.mes_referencia ? " — " + parcela.mes_referencia : ""}`,
+    });
+
+    // Buscar QR Code PIX se for PIX
+    let pixQrCode = null, pixCopyPaste = null;
+    if (billingType === "PIX") {
+      try {
+        const qr = await asaasRequest("GET", `/payments/${charge.id}/pixQrCode`, s.api_key, s.ambiente);
+        pixQrCode = qr.encodedImage || null;
+        pixCopyPaste = qr.payload || null;
+      } catch { /* QR pode demorar a ficar disponível */ }
+    }
+
+    // Salvar no banco
+    await db.query(
+      `UPDATE parcelas SET
+         asaas_cobranca_id=$1, asaas_status=$2, asaas_boleto_url=$3,
+         asaas_pix_qr_code=$4, asaas_pix_copy_paste=$5, asaas_invoice_url=$6
+       WHERE id=$7`,
+      [
+        charge.id, charge.status,
+        charge.bankSlipUrl || null,
+        pixQrCode, pixCopyPaste,
+        charge.invoiceUrl || null,
+        parcelaId,
+      ]
+    );
+
+    res.json({
+      success: true,
+      cobranca_id: charge.id,
+      status: charge.status,
+      boleto_url: charge.bankSlipUrl || null,
+      invoice_url: charge.invoiceUrl || null,
+      pix_qr_code: pixQrCode,
+      pix_copy_paste: pixCopyPaste,
+    });
+  } catch (e) { res.status(400).json({ success: false, error: e.message }); }
+});
+
+// Consultar status de cobrança e atualizar parcela
+app.get("/asaas/cobranca/:parcelaId", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { parcelaId } = req.params;
+    const { rows } = await db.query("SELECT asaas_cobranca_id FROM parcelas WHERE id=$1", [parcelaId]);
+    const parcela = rows[0];
+    if (!parcela?.asaas_cobranca_id) return res.status(404).json({ error: "Cobrança ASAAS não encontrada" });
+
+    const s = await getAsaasSettings();
+    const charge = await asaasRequest("GET", `/payments/${parcela.asaas_cobranca_id}`, s.api_key, s.ambiente);
+
+    // Se RECEIVED ou CONFIRMED, marcar parcela como paga
+    if (["RECEIVED", "CONFIRMED"].includes(charge.status)) {
+      await db.query(
+        "UPDATE parcelas SET pago=true, data_pagamento=now(), asaas_status=$1 WHERE id=$2 AND pago=false",
+        [charge.status, parcelaId]
+      );
+    } else {
+      await db.query("UPDATE parcelas SET asaas_status=$1 WHERE id=$2", [charge.status, parcelaId]);
+    }
+
+    res.json({ success: true, status: charge.status, pago: ["RECEIVED", "CONFIRMED"].includes(charge.status) });
+  } catch (e) { res.status(400).json({ success: false, error: e.message }); }
+});
+
+// Enviar cobrança (boleto/PIX) ao cliente por WhatsApp ou E-mail
+app.post("/asaas/cobranca/:parcelaId/enviar", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { parcelaId } = req.params;
+    const { channel, mensagem } = req.body || {};
+    if (!["whatsapp", "email"].includes(channel)) {
+      return res.status(400).json({ error: "Canal inválido. Use whatsapp ou email" });
+    }
+    if (channel === "whatsapp") {
+      res.json(await sendCobrancaWhatsApp(parcelaId, mensagem));
+    } else {
+      res.json(await sendCobrancaEmail(parcelaId, mensagem));
+    }
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+// Webhook ASAAS (valida pelo webhook_token configurado, quando houver)
+app.post("/asaas/webhook", async (req, res) => {
+  try {
+    const { rows: cfgRows } = await db.query("SELECT webhook_token FROM asaas_settings LIMIT 1");
+    const configuredToken = cfgRows[0]?.webhook_token || "";
+    if (configuredToken && req.headers["asaas-access-token"] !== configuredToken) {
+      return res.status(401).json({ error: "Token de webhook inválido" });
+    }
+
+    const { event, payment } = req.body || {};
+    if (!payment?.id) return res.json({ received: true });
+
+    if (["PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"].includes(event)) {
+      await db.query(
+        "UPDATE parcelas SET pago=true, data_pagamento=now(), asaas_status=$1 WHERE asaas_cobranca_id=$2 AND pago=false",
+        [payment.status, payment.id]
+      );
+    } else if (event === "PAYMENT_UPDATED") {
+      await db.query(
+        "UPDATE parcelas SET asaas_status=$1 WHERE asaas_cobranca_id=$2",
+        [payment.status, payment.id]
+      );
+    }
+    res.json({ received: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================================
 // NOTIFICAÇÕES
 // ============================================================================
 app.post("/notify/whatsapp", requireAuth, async (req, res) => {
@@ -345,12 +600,86 @@ app.post("/notify/email", requireAuth, async (req, res) => {
 app.post("/notify/receipt", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
-    const { parcela_id, channel } = req.body;
+    const { parcela_id, channel, mensagem } = req.body;
     if (!parcela_id) return res.status(400).json({ error: "parcela_id obrigatório" });
     const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`;
-    if (channel === "whatsapp") res.json(await sendReceiptWhatsApp(parcela_id));
-    else if (channel === "email") res.json(await sendReceiptEmail(parcela_id, baseUrl));
+    if (channel === "whatsapp") res.json(await sendReceiptWhatsApp(parcela_id, baseUrl, mensagem));
+    else if (channel === "email") res.json(await sendReceiptEmail(parcela_id, baseUrl, mensagem));
     else res.status(400).json({ error: "Canal inválido" });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+app.post("/notify/cobranca", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { parcela_id, channel, mensagem } = req.body;
+    if (!parcela_id) return res.status(400).json({ error: "parcela_id obrigatório" });
+    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`;
+    if (channel === "whatsapp") res.json(await sendCobrancaSimplesWhatsApp(parcela_id, mensagem));
+    else if (channel === "email") res.json(await sendCobrancaSimplesEmail(parcela_id, baseUrl, mensagem));
+    else res.status(400).json({ error: "Canal inválido" });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+});
+
+// Notificar vendedor vinculado a contrato ou proposta
+app.post("/notify/vendedor", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { tipo, id, evento, canal } = req.body;
+    if (!tipo || !id || !evento) return res.status(400).json({ error: "tipo, id e evento são obrigatórios" });
+    const tabela = tipo === "contrato" ? "contratos" : "propostas";
+    const { rows } = await db.query(
+      `SELECT t.*, cl.nome AS cliente_nome,
+              ve.nome AS vendedor_nome, ve.whatsapp AS vendedor_whatsapp, ve.email AS vendedor_email,
+              cs.name AS empresa_nome
+         FROM ${tabela} t
+         LEFT JOIN clientes cl ON cl.id = t.cliente_id
+         LEFT JOIN vendedores ve ON ve.id = t.vendedor_id
+         LEFT JOIN company_settings cs ON true
+        WHERE t.id = $1`, [id]
+    );
+    const reg = rows[0];
+    if (!reg) return res.status(404).json({ error: `${tipo} não encontrado` });
+    if (!reg.vendedor_id) return res.status(400).json({ error: "Nenhum vendedor vinculado a este registro" });
+
+    const fmtMoeda = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+    const ctx = {
+      vendedor: reg.vendedor_nome || "",
+      vendedor_nome: reg.vendedor_nome || "",
+      cliente: reg.cliente_nome || "",
+      cliente_nome: reg.cliente_nome || "",
+      empresa: reg.empresa_nome || "",
+      empresa_nome: reg.empresa_nome || "",
+      titulo: reg.titulo || "",
+      tipo_proposta: reg.tipo_proposta || "",
+      total: fmtMoeda(reg.total),
+      valor: fmtMoeda(reg.valor || reg.total),
+      link_assinatura: reg.assinatura_link || "",
+    };
+
+    const results = [];
+    const canais = canal === "both" ? ["whatsapp", "email"] : [canal || "whatsapp"];
+    for (const c of canais) {
+      try {
+        if (c === "whatsapp") {
+          if (!reg.vendedor_whatsapp) { results.push({ canal: "whatsapp", error: "Vendedor sem WhatsApp" }); continue; }
+          const fallback = `Olá ${ctx.vendedor_nome}, você tem um novo ${tipo}: cliente ${ctx.cliente}.${ctx.link_assinatura ? "\n\nLink: " + ctx.link_assinatura : ""}`;
+          results.push({ canal: "whatsapp", ...(await sendWhatsAppEvento(reg.vendedor_whatsapp, evento, ctx, fallback)) });
+        } else {
+          if (!reg.vendedor_email) { results.push({ canal: "email", error: "Vendedor sem email" }); continue; }
+          const subject = `${tipo === "contrato" ? "Contrato" : "Proposta"} - ${ctx.cliente}`;
+          const fallback = `Olá ${ctx.vendedor_nome}, você tem um novo ${tipo}: cliente ${ctx.cliente}.${ctx.link_assinatura ? "\n\nLink: " + ctx.link_assinatura : ""}`;
+          results.push({ canal: "email", ...(await sendEmailEvento(reg.vendedor_email, evento, ctx, subject, fallback)) });
+        }
+      } catch (err) {
+        results.push({ canal: c, error: err.message });
+      }
+    }
+    res.json({ success: true, results });
   } catch (e) {
     res.status(400).json({ success: false, error: e.message });
   }
@@ -954,6 +1283,19 @@ function buildPropostaHtmlServer(p, itens, comp, baseUrl) {
         </tr>
       </tbody>
     </table>
+    <div style="margin-top:40px;display:flex;justify-content:space-around;text-align:center;font-size:13px;">
+      <div style="width:250px;">
+        ${comp.assinatura_imagem
+          ? `<img src="${comp.assinatura_imagem}" style="max-height:60px;display:block;margin:0 auto 5px;" />`
+          : `<div style="border-top:1px solid #94a3b8;margin-bottom:5px;"></div>`}
+        <strong>${comp.name || "Assinatura da Empresa"}</strong>
+        <div style="font-size:11px;color:#64748b;">${comp.nome_responsavel || ""}</div>
+      </div>
+      <div style="width:250px;">
+        <div style="border-top:1px solid #94a3b8;margin-bottom:5px;"></div>
+        <strong>${p.nome || "Assinatura do Cliente"}</strong>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -962,6 +1304,7 @@ app.post("/propostas/:id/enviar-email", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
     const { id } = req.params;
+    const { mensagem } = req.body || {};
     const { rows } = await db.query(
       `SELECT p.*, cl.nome, cl.telefone, cl.email, cl.cpf_cnpj, cl.endereco
          FROM propostas p
@@ -972,7 +1315,7 @@ app.post("/propostas/:id/enviar-email", requireAuth, async (req, res) => {
     if (!p) return res.status(404).json({ error: "Proposta não encontrada" });
     if (!p.email) return res.status(400).json({ error: "Cliente sem e-mail cadastrado" });
     const { rows: itens } = await db.query("SELECT * FROM proposta_itens WHERE proposta_id = $1 ORDER BY ordem ASC", [id]);
-    const comp = (await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, nome_responsavel, logo_url FROM company_settings LIMIT 1")).rows[0] || {};
+    const comp = (await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, nome_responsavel, cargo_responsavel, logo_url, assinatura_imagem FROM company_settings LIMIT 1")).rows[0] || {};
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const { rows: smtpRows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
     const smtp = smtpRows[0];
@@ -984,13 +1327,23 @@ app.post("/propostas/:id/enviar-email", requireAuth, async (req, res) => {
       tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
     });
     const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
+    const textMessage = (mensagem && mensagem.trim())
+      ? mensagem.trim()
+      : `Segue em anexo a proposta comercial: ${p.titulo || "Proposta Comercial"} no valor de R$ ${Number(p.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.`;
     const htmlBody = buildPropostaHtmlServer(p, itens, comp, baseUrl);
-    const fullHtml = `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;padding:20px;background:#f8fafc;}@page{margin:15mm;}</style></head><body>${htmlBody}</body></html>`;
+    const introHtml = `<p style="font-family:Arial,sans-serif;color:#1e293b;white-space:pre-wrap;">${textMessage.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`;
+    const fullHtml = `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;padding:20px;background:#f8fafc;}@page{margin:15mm;}</style></head><body>${introHtml}${htmlBody}</body></html>`;
+    const pdfBuffer = await buildPropostaPdf(p, itens, comp, baseUrl);
     await transporter.sendMail({
       from, to: p.email,
       subject: `${p.titulo || "Proposta Comercial"} - ${p.nome || "Cliente"}`,
       html: fullHtml,
-      text: `Segue em anexo a proposta comercial: ${p.titulo || "Proposta Comercial"} no valor de R$ ${Number(p.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.`,
+      text: textMessage,
+      attachments: [{
+        filename: `proposta-${(p.nome || "cliente").replace(/[^\w-]+/g, "_")}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      }],
     });
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -1001,6 +1354,7 @@ app.post("/propostas/:id/enviar-whatsapp", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
     const { id } = req.params;
+    const { mensagem } = req.body || {};
     const { rows } = await db.query(
       `SELECT p.*, cl.nome, cl.telefone, cl.email, cl.cpf_cnpj
          FROM propostas p
@@ -1016,16 +1370,132 @@ app.post("/propostas/:id/enviar-whatsapp", requireAuth, async (req, res) => {
     const ev = evRows[0];
     if (!ev || !ev.instance_url || !ev.api_key || !ev.instance_name) return res.status(400).json({ error: "Evolution API não configurada" });
     const fmtMoeda = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const itensCount = (await db.query("SELECT COUNT(*) FROM proposta_itens WHERE proposta_id = $1", [id])).rows[0].count;
-    const msg = `Olá ${p.nome || "Cliente"}, segue sua proposta comercial:\n\n*${p.titulo || "PROPOSTA COMERCIAL"}*\n${p.tipo_proposta ? `Tipo: ${p.tipo_proposta}\n` : ""}Itens: ${itensCount}\n*Valor Total: R$ ${fmtMoeda(p.total)}*\n\nPara visualizar a proposta completa, entre em contato conosco.`;
+    const { rows: itens } = await db.query("SELECT * FROM proposta_itens WHERE proposta_id = $1 ORDER BY ordem ASC", [id]);
+    const comp = (await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, nome_responsavel, cargo_responsavel, logo_url, assinatura_imagem FROM company_settings LIMIT 1")).rows[0] || {};
+    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`;
+    const msg = (mensagem && mensagem.trim())
+      ? mensagem.trim()
+      : `Olá ${p.nome || "Cliente"}, segue sua proposta comercial:\n\n*${p.titulo || "PROPOSTA COMERCIAL"}*\n${p.tipo_proposta ? `Tipo: ${p.tipo_proposta}\n` : ""}Itens: ${itens.length}\n*Valor Total: R$ ${fmtMoeda(p.total)}*`;
+    const pdfBuffer = await buildPropostaPdf(p, itens, comp, baseUrl);
     const instanceUrl = ev.instance_url.replace(/\/$/, "");
-    await fetch(`${instanceUrl}/message/sendText/${ev.instance_name}`, {
+    await fetch(`${instanceUrl}/message/sendMedia/${ev.instance_name}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: ev.api_key },
-      body: JSON.stringify({ number: whatsapp, text: msg }),
+      body: JSON.stringify({
+        number: whatsapp,
+        mediatype: "document",
+        mimetype: "application/pdf",
+        fileName: `proposta-${(p.nome || "cliente").replace(/[^\w-]+/g, "_")}.pdf`,
+        caption: msg,
+        media: pdfBuffer.toString("base64"),
+      }),
     });
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ============================================================================
+// ENVIO DE MENSAGEM AVULSA (template → clientes/vendedores selecionados)
+// ============================================================================
+app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { template_id, destinatarios, canal } = req.body;
+    if (!template_id || !destinatarios?.length || !canal) {
+      return res.status(400).json({ error: "template_id, destinatarios e canal são obrigatórios" });
+    }
+    const { rows: tmpl } = await db.query("SELECT * FROM message_templates WHERE id=$1", [template_id]);
+    if (!tmpl.length) return res.status(404).json({ error: "Template não encontrado" });
+    const template = tmpl[0];
+
+    // Busca dados da empresa uma vez
+    const { rows: compRows } = await db.query(
+      "SELECT name, cnpj, telefone, email, endereco, bairro, cidade, cep, nome_responsavel, cargo_responsavel FROM company_settings LIMIT 1"
+    );
+    const comp = compRows[0] || {};
+    const fmtData = (d) => d ? new Date(d).toLocaleDateString("pt-BR") : "";
+
+    const resultados = [];
+    for (const dest of destinatarios) {
+      let ctx = {
+        empresa_nome: comp.name || "",
+        empresa_cnpj: comp.cnpj || "",
+        empresa_telefone: comp.telefone || "",
+        empresa_email: comp.email || "",
+        empresa_endereco: comp.endereco || "",
+        empresa_cidade: comp.cidade || "",
+        empresa_responsavel: comp.nome_responsavel || "",
+      };
+
+      // Busca dados completos do destinatário no banco
+      if (dest.tipo === "cliente" && dest.id) {
+        const { rows } = await db.query(
+          "SELECT nome, telefone, email, cpf_cnpj, endereco, bairro, cidade, estado, cep, nome_responsavel, cargo_responsavel FROM clientes WHERE id=$1",
+          [dest.id]
+        );
+        const c = rows[0] || {};
+        ctx = {
+          ...ctx,
+          nome: c.nome || dest.nome || "",
+          cliente_nome: c.nome || dest.nome || "",
+          cliente: c.nome || dest.nome || "",
+          telefone: c.telefone || dest.telefone || "",
+          email: c.email || dest.email || "",
+          cpf_cnpj: c.cpf_cnpj || "",
+          endereco: c.endereco || "",
+          cidade: c.cidade || "",
+          estado: c.estado || "",
+          cep: c.cep || "",
+          nome_responsavel: c.nome_responsavel || "",
+          cargo_responsavel: c.cargo_responsavel || "",
+        };
+      } else if (dest.tipo === "vendedor" && dest.id) {
+        const { rows } = await db.query(
+          "SELECT nome, whatsapp, email, cpf, comissao_padrao FROM vendedores WHERE id=$1",
+          [dest.id]
+        );
+        const v = rows[0] || {};
+        ctx = {
+          ...ctx,
+          nome: v.nome || dest.nome || "",
+          vendedor_nome: v.nome || dest.nome || "",
+          vendedor: v.nome || dest.nome || "",
+          telefone: v.whatsapp || dest.telefone || "",
+          email: v.email || dest.email || "",
+          cpf: v.cpf || "",
+          comissao: v.comissao_padrao ? String(v.comissao_padrao) : "",
+        };
+      } else {
+        ctx = {
+          ...ctx,
+          nome: dest.nome || "",
+          cliente_nome: dest.nome || "",
+          vendedor_nome: dest.nome || "",
+          telefone: dest.telefone || "",
+          email: dest.email || "",
+        };
+      }
+
+      const mensagem = (template.corpo || "").replace(/\{\{(\w+)\}\}/g, (_, k) => ctx[k] ?? "");
+
+      try {
+        if (canal === "whatsapp") {
+          if (!ctx.telefone) throw new Error("Sem telefone");
+          await sendWhatsAppDireto(ctx.telefone, mensagem);
+          resultados.push({ id: dest.id, nome: ctx.nome, ok: true });
+        } else if (canal === "email") {
+          if (!ctx.email) throw new Error("Sem e-mail");
+          await sendEmailDireto(ctx.email, template.nome, mensagem);
+          resultados.push({ id: dest.id, nome: ctx.nome, ok: true });
+        }
+      } catch (e) {
+        resultados.push({ id: dest.id, nome: ctx.nome, ok: false, erro: e.message });
+      }
+    }
+    res.json({ resultados });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ============================================================================
