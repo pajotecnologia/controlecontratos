@@ -1508,4 +1508,64 @@ if (fs.existsSync(PUBLIC_DIR)) {
 }
 
 const PORT = process.env.PORT || 3001;
+
+app.post("/notify/agendar", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { data_agendamento, canal, referencia_tipo, payload } = req.body;
+    const { rows } = await db.query(
+      "INSERT INTO agendamentos_envio (data_agendamento, canal, referencia_tipo, payload) VALUES ($1, $2, $3, $4) RETURNING *",
+      [data_agendamento, canal, referencia_tipo, payload]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/notify/agendamentos", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    const { rows } = await db.query("SELECT * FROM agendamentos_envio WHERE status = 'pendente' ORDER BY data_agendamento ASC");
+    res.json(rows);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/notify/agendamentos/:id", requireAuth, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+  try {
+    await db.query("UPDATE agendamentos_envio SET status = 'cancelado' WHERE id = $1", [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// CRON JOB para processar envios agendados
+setInterval(async () => {
+  try {
+    const { rows } = await db.query("SELECT * FROM agendamentos_envio WHERE status = 'pendente' AND data_agendamento <= NOW()");
+    if (!rows.length) return;
+    const adminQuery = await db.query("SELECT user_id FROM user_roles WHERE role = 'admin' LIMIT 1");
+    if (!adminQuery.rows.length) return;
+    const token = signToken({ id: adminQuery.rows[0].user_id, email: "cron" });
+    
+    for (const job of rows) {
+      try {
+        const url = `http://127.0.0.1:${PORT}${job.payload.path}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify(job.payload.body || {})
+        });
+        const json = await res.json().catch(()=>({}));
+        if (res.ok) {
+          await db.query("UPDATE agendamentos_envio SET status = 'enviado' WHERE id = $1", [job.id]);
+        } else {
+          const err = json.error || "Erro desconhecido HTTP " + res.status;
+          await db.query("UPDATE agendamentos_envio SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [err, job.id]);
+        }
+      } catch(e) {
+        await db.query("UPDATE agendamentos_envio SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [e.message, job.id]);
+      }
+    }
+  } catch(e) { console.error("Erro no cron de agendamentos:", e); }
+}, 60000);
+
 app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));

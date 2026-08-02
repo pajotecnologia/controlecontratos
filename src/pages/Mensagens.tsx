@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { supabase, getMessageTemplates, enviarMensagem } from "@/integrations/api/client";
+import { supabase, getMessageTemplates, enviarMensagem, agendarEnvio } from "@/integrations/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Send, Users, UserCheck, MessageSquare, CheckCircle2, XCircle } from "lucide-react";
+import { Send, Users, UserCheck, MessageSquare, CheckCircle2, XCircle, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Destinatario = {
@@ -36,6 +37,8 @@ const Mensagens = () => {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [enviando, setEnviando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoEnvio[]>([]);
+  const [agendar, setAgendar] = useState(false);
+  const [dataAgendamento, setDataAgendamento] = useState("");
 
   useEffect(() => {
     load();
@@ -83,6 +86,23 @@ const Mensagens = () => {
     const destinatarios = listaAtual.filter((d) => selecionados.has(d.id));
     setEnviando(true);
     setResultados([]);
+
+    if (agendar) {
+      if (!dataAgendamento) {
+        setEnviando(false);
+        return toast({ title: "Informe a data e hora do agendamento", variant: "destructive" });
+      }
+      const dataIso = new Date(dataAgendamento).toISOString();
+      const payload = { template_id: templateId, destinatarios, canal };
+      const res = await agendarEnvio({ data_agendamento: dataIso, canal, referencia_tipo: "mensagem_avulsa", payload });
+      setEnviando(false);
+      if (res?.error) return toast({ title: "Erro ao agendar", description: res.error, variant: "destructive" });
+      toast({ title: "Mensagens agendadas com sucesso!" });
+      setSelecionados(new Set());
+      setAgendar(false);
+      setDataAgendamento("");
+      return;
+    }
 
     const { resultados: res, error } = await enviarMensagem({ template_id: templateId, destinatarios, canal });
     setEnviando(false);
@@ -193,9 +213,24 @@ const Mensagens = () => {
                 </div>
               )}
 
+              <div className="pt-2 border-t space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="agendar" checked={agendar} onCheckedChange={(v) => setAgendar(!!v)} />
+                  <Label htmlFor="agendar" className="cursor-pointer font-medium text-slate-700">Agendar para envio futuro</Label>
+                </div>
+                {agendar && (
+                  <Input 
+                    type="datetime-local" 
+                    value={dataAgendamento} 
+                    onChange={(e) => setDataAgendamento(e.target.value)} 
+                    className="w-full"
+                  />
+                )}
+              </div>
+
               <Button className="w-full" onClick={handleEnviar} disabled={enviando || !templateId || selecionados.size === 0}>
-                <Send className="h-4 w-4 mr-2" />
-                {enviando ? "Enviando..." : `Enviar para ${selecionados.size} destinatário(s)`}
+                {agendar ? <CalendarClock className="h-4 w-4 mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                {enviando ? "Processando..." : (agendar ? `Agendar para ${selecionados.size} destinatário(s)` : `Enviar para ${selecionados.size} destinatário(s)`)}
               </Button>
             </CardContent>
           </Card>

@@ -298,3 +298,17 @@ export async function enviarMensagem(payload: {
 export function getApiUrl() {
   return API_URL;
 }
+
+export async function agendarEnvio(payload: { data_agendamento: string; canal: string; referencia_tipo: string; payload: any }) {
+  return api('/notify/agendar', payload);
+}
+
+export async function getAgendamentos() {
+  const { ok, json } = await api('/notify/agendamentos');
+  return ok ? json : [];
+}
+
+export async function cancelarAgendamento(id: string) {
+  return api('/notify/agendamentos/' + id, undefined, { method: 'DELETE' });
+}
+

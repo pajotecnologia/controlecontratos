@@ -20,6 +20,7 @@ import Configuracoes from "./pages/Configuracoes";
 import Usuarios from "./pages/Usuarios";
 import ResetPassword from "./pages/ResetPassword";
 import Mensagens from "./pages/Mensagens";
+import Agendamentos from "./pages/Agendamentos";
 import AssinarContrato from "./pages/AssinarContrato";
 import AssinarProposta from "./pages/AssinarProposta";
 import NotFound from "./pages/NotFound";
@@ -88,6 +89,7 @@ const AppRoutes = () => {
       <Route path="/configuracoes" element={<ProtectedRoute adminOnly><Configuracoes /></ProtectedRoute>} />
       <Route path="/usuarios" element={<ProtectedRoute adminOnly><Usuarios /></ProtectedRoute>} />
       <Route path="/mensagens" element={<ProtectedRoute adminOnly><Mensagens /></ProtectedRoute>} />
+      <Route path="/agendamentos" element={<ProtectedRoute adminOnly><Agendamentos /></ProtectedRoute>} />
       <Route path="/assinar/:token" element={<AssinarContrato />} />
       <Route path="/assinar-proposta/:token" element={<AssinarProposta />} />
       <Route path="/a/:token" element={<RedirectAssinar />} />

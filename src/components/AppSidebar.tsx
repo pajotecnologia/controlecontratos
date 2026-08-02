@@ -45,6 +45,7 @@ export function AppSidebar() {
     { title: "Contratos", url: "/contratos", icon: FileSignature },
     { title: "Propostas", url: "/propostas", icon: FileText },
     { title: "Mensagens", url: "/mensagens", icon: MessageSquare },
+    { title: "Agendamentos", url: "/agendamentos", icon: LayoutDashboard },
     { title: "Relatórios", url: "/relatorios", icon: FileText },
     { title: "Usuários", url: "/usuarios", icon: Shield },
     { title: "Configurações", url: "/configuracoes", icon: Settings },

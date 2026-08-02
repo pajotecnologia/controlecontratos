@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { supabase, notify, sendReceipt, sendCobrancaSimples, getMessageTemplates, getAsaasSettings, criarCobrancaAsaas, consultarCobrancaAsaas, enviarCobrancaAsaas } from "@/integrations/api/client";
+import { supabase, notify, sendReceipt, sendCobrancaSimples, getMessageTemplates, getAsaasSettings, criarCobrancaAsaas, consultarCobrancaAsaas, enviarCobrancaAsaas, agendarEnvio } from "@/integrations/api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -162,6 +163,8 @@ const Financeiro = () => {
   const [reciboSendDialog, setReciboSendDialog] = useState<{ parcelaId: string; canal: "whatsapp" | "email" } | null>(null);
   const [reciboSendTemplateId, setReciboSendTemplateId] = useState("");
   const [reciboSendMensagem, setReciboSendMensagem] = useState("");
+  const [agendarRecibo, setAgendarRecibo] = useState(false);
+  const [dataAgendamentoRecibo, setDataAgendamentoRecibo] = useState("");
 
   // Parcelas
   const [qtdeParcelas, setQtdeParcelas] = useState(1);
@@ -206,6 +209,8 @@ const Financeiro = () => {
   const [cobrancaSimplesTemplateId, setCobrancaSimplesTemplateId] = useState("");
   const [cobrancaSimplesMensagem, setCobrancaSimplesMensagem] = useState("");
   const [sendingCobrancaSimples, setSendingCobrancaSimples] = useState<string | null>(null);
+  const [agendarCobrancaSimples, setAgendarCobrancaSimples] = useState(false);
+  const [dataAgendamentoCobrancaSimples, setDataAgendamentoCobrancaSimples] = useState("");
 
   const handleSendNotification = async (vvId: string, templateType: "nova_venda" | "pagamento", channel: "whatsapp" | "email") => {
     const alreadySent = sentNotifications[vvId]?.has(channel);
@@ -251,22 +256,6 @@ const Financeiro = () => {
     { label: "{{empresa}}", desc: "Nome da empresa" },
   ];
 
-  const inserirVariavel = (variavel: string, setter: (v: string) => void, getter: string) => {
-    const textarea = document.activeElement as HTMLTextAreaElement;
-    if (textarea && textarea.tagName === "TEXTAREA") {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const novo = getter.substring(0, start) + variavel + getter.substring(end);
-      setter(novo);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + variavel.length, start + variavel.length);
-      }, 0);
-    } else {
-      setter(getter + variavel);
-    }
-  };
-
   const abrirEnvioCobrancaSimples = (parcelaId: string, canal: "whatsapp" | "email") => {
     setCobrancaSimplesDialog({ parcelaId, canal });
     const templates = msgTemplates.filter((t) => canal === "email" ? t.ativo_email : t.ativo_whatsapp);
@@ -280,6 +269,17 @@ const Financeiro = () => {
     const { parcelaId, canal } = cobrancaSimplesDialog;
     const key = `${parcelaId}-${canal}`;
     setSendingCobrancaSimples(key);
+    
+    if (agendarCobrancaSimples) {
+      if (!dataAgendamentoCobrancaSimples) return toast({ title: "Informe data/hora", variant: "destructive" });
+      const res = await agendarEnvio({ data_agendamento: new Date(dataAgendamentoCobrancaSimples).toISOString(), canal, referencia_tipo: "cobranca_simples", payload: { parcela_id: parcelaId, canal, mensagem: cobrancaSimplesMensagem.trim() || undefined } });
+      setSendingCobrancaSimples(null);
+      if (res?.error) return toast({ title: "Erro", description: res.error, variant: "destructive" });
+      toast({ title: "Cobrança agendada!" });
+      setCobrancaSimplesDialog(null);
+      return;
+    }
+
     const { ok, json } = await sendCobrancaSimples(parcelaId, canal, cobrancaSimplesMensagem.trim() || undefined);
     setSendingCobrancaSimples(null);
     if (!ok || json?.error) {
@@ -316,6 +316,22 @@ const Financeiro = () => {
   const handleConfirmarEnvioRecibo = async () => {
     if (!reciboSendDialog) return;
     const { parcelaId, canal } = reciboSendDialog;
+    
+    if (agendarRecibo) {
+      if (!dataAgendamentoRecibo) return toast({ title: "Informe a data e hora do agendamento", variant: "destructive" });
+      setSendingReceipt(`${parcelaId}-${canal}`);
+      const dataIso = new Date(dataAgendamentoRecibo).toISOString();
+      const payload = { parcela_id: parcelaId, channel: canal, mensagem: reciboSendMensagem.trim() || undefined };
+      const res = await agendarEnvio({ data_agendamento: dataIso, canal, referencia_tipo: "cobranca_recibo", payload: { path: "/notify/receipt", body: payload } });
+      setSendingReceipt(null);
+      if (res?.error) return toast({ title: "Erro ao agendar", description: res.error, variant: "destructive" });
+      toast({ title: "Recibo agendado com sucesso!" });
+      setReciboSendDialog(null);
+      setAgendarRecibo(false);
+      setDataAgendamentoRecibo("");
+      return;
+    }
+
     const key = `${parcelaId}-${canal}`;
     setSendingReceipt(key);
     const { ok, json } = await sendReceipt(parcelaId, canal, reciboSendMensagem.trim() || undefined);
@@ -1620,14 +1636,23 @@ const Financeiro = () => {
                 onChange={(e) => setReciboSendMensagem(e.target.value)}
               />
             </div>
+            <div className="pt-2 border-t space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox id="agendarRecibo" checked={agendarRecibo} onCheckedChange={(v) => setAgendarRecibo(!!v)} />
+                <Label htmlFor="agendarRecibo" className="cursor-pointer font-medium text-slate-700">Agendar para envio futuro</Label>
+              </div>
+              {agendarRecibo && (
+                <Input type="datetime-local" value={dataAgendamentoRecibo} onChange={(e) => setDataAgendamentoRecibo(e.target.value)} />
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReciboSendDialog(null)}>Cancelar</Button>
             <Button
-              onClick={handleConfirmarEnvioRecibo}
               disabled={!!reciboSendDialog && sendingReceipt === `${reciboSendDialog.parcelaId}-${reciboSendDialog.canal}`}
+              onClick={handleConfirmarEnvioRecibo}
             >
-              {(!!reciboSendDialog && sendingReceipt === `${reciboSendDialog.parcelaId}-${reciboSendDialog.canal}`) ? "Enviando..." : "Enviar"}
+              {(!!reciboSendDialog && sendingReceipt === `${reciboSendDialog.parcelaId}-${reciboSendDialog.canal}`) ? "Enviando..." : (agendarRecibo ? "Agendar" : "Enviar")}
             </Button>
           </DialogFooter>
         </DialogContent>

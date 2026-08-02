@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { supabase, uploadArquivo, enviarPropostaParaAssinatura, enviarPropostaEmail, enviarPropostaWhatsapp, getMessageTemplates, notifyVendedor } from "@/integrations/api/client";
+import { supabase, uploadArquivo, enviarPropostaParaAssinatura, enviarPropostaEmail, enviarPropostaWhatsapp, getMessageTemplates, notifyVendedor, agendarEnvio } from "@/integrations/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -79,6 +80,8 @@ const Propostas = () => {
   const [vendedores, setVendedores] = useState<{ id: string; nome: string }[]>([]);
   const [vendedorId, setVendedorId] = useState("");
   const [enviandoVendedor, setEnviandoVendedor] = useState<string | null>(null);
+  const [agendarEnvioAtivo, setAgendarEnvioAtivo] = useState(false);
+  const [dataAgendamento, setDataAgendamento] = useState("");
 
   // Envio com escolha de mensagem (email/whatsapp)
   const [msgTemplates, setMsgTemplates] = useState<{ id: string; nome: string; evento: string; corpo: string; ativo_whatsapp: boolean; ativo_email: boolean }[]>([]);
@@ -107,6 +110,23 @@ const Propostas = () => {
   const handleConfirmarEnvio = async () => {
     if (!sendDialog) return;
     const { proposta: p, canal } = sendDialog;
+    
+    if (agendarEnvioAtivo) {
+      if (!dataAgendamento) return toast({ title: "Informe a data e hora do agendamento", variant: "destructive" });
+      setEnviandoMensagem(true);
+      const dataIso = new Date(dataAgendamento).toISOString();
+      const payloadPath = canal === "email" ? `/propostas/${p.id}/enviar-email` : `/propostas/${p.id}/enviar-whatsapp`;
+      const payload = { mensagem: sendMensagem };
+      const res = await agendarEnvio({ data_agendamento: dataIso, canal, referencia_tipo: "proposta_" + canal, payload: { path: payloadPath, body: payload } });
+      setEnviandoMensagem(false);
+      if (res?.error) return toast({ title: "Erro ao agendar", description: res.error, variant: "destructive" });
+      toast({ title: "Proposta agendada com sucesso!" });
+      setSendDialog(null);
+      setAgendarEnvioAtivo(false);
+      setDataAgendamento("");
+      return;
+    }
+
     setEnviandoMensagem(true);
     const { error } = canal === "email"
       ? await enviarPropostaEmail(p.id, sendMensagem)
@@ -937,11 +957,20 @@ const Propostas = () => {
                 onChange={(e) => setSendMensagem(e.target.value)}
               />
             </div>
+            <div className="pt-2 border-t space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox id="agendarProposta" checked={agendarEnvioAtivo} onCheckedChange={(v) => setAgendarEnvioAtivo(!!v)} />
+                <Label htmlFor="agendarProposta" className="cursor-pointer font-medium text-slate-700">Agendar para envio futuro</Label>
+              </div>
+              {agendarEnvioAtivo && (
+                <Input type="datetime-local" value={dataAgendamento} onChange={(e) => setDataAgendamento(e.target.value)} />
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendDialog(null)}>Cancelar</Button>
             <Button onClick={handleConfirmarEnvio} disabled={enviandoMensagem}>
-              {enviandoMensagem ? "Enviando..." : "Enviar"}
+              {enviandoMensagem ? "Processando..." : (agendarEnvioAtivo ? "Agendar" : "Enviar")}
             </Button>
           </DialogFooter>
         </DialogContent>
