@@ -305,7 +305,8 @@ export async function agendarEnvio(payload: { data_agendamento: string; canal: s
 
 export async function getAgendamentos() {
   const { ok, json } = await api('/notify/agendamentos');
-  return ok ? json : [];
+  if (!ok) throw new Error(json?.error || "Erro ao buscar agendamentos");
+  return json;
 }
 
 export async function cancelarAgendamento(id: string) {

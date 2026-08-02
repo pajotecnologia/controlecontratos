@@ -1498,14 +1498,7 @@ app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// Servir o frontend compilado (SPA)
-// ============================================================================
-const PUBLIC_DIR = path.join(__dirname, "public");
-if (fs.existsSync(PUBLIC_DIR)) {
-  app.use(express.static(PUBLIC_DIR));
-  app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
-}
+
 
 const PORT = process.env.PORT || 3001;
 
@@ -1567,5 +1560,13 @@ setInterval(async () => {
     }
   } catch(e) { console.error("Erro no cron de agendamentos:", e); }
 }, 60000);
+// ============================================================================
+// Servir o frontend compilado (SPA)
+// ============================================================================
+const PUBLIC_DIR = path.join(__dirname, "public");
+if (fs.existsSync(PUBLIC_DIR)) {
+  app.use(express.static(PUBLIC_DIR));
+  app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
+}
 
 app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));

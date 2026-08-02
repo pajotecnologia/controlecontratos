@@ -11,13 +11,22 @@ import { CalendarClock, Trash2, MessageSquare, Mail } from "lucide-react";
 export default function Agendamentos() {
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorState, setErrorState] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    const data = await getAgendamentos();
-    setAgendamentos(data);
+    try {
+      const data = await getAgendamentos();
+      setAgendamentos(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setErrorState(err.message);
+    }
     setLoading(false);
   };
+
+  if (errorState) {
+    return <div className="p-6 text-red-500">Erro ao carregar: {errorState}</div>;
+  }
 
   useEffect(() => {
     load();
@@ -68,17 +77,19 @@ export default function Agendamentos() {
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Carregando...</TableCell>
                   </TableRow>
                 )}
-                {!loading && agendamentos.length === 0 && (
+                {!loading && (!agendamentos || agendamentos.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       Nenhum agendamento pendente no momento.
                     </TableCell>
                   </TableRow>
                 )}
-                {agendamentos.map((a) => (
+                {Array.isArray(agendamentos) && agendamentos.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-medium whitespace-nowrap">
-                      {format(new Date(a.data_agendamento), "dd/MM/yyyy 'às' HH:mm")}
+                      {a.data_agendamento && !isNaN(new Date(a.data_agendamento).getTime()) 
+                        ? format(new Date(a.data_agendamento), "dd/MM/yyyy 'às' HH:mm") 
+                        : "Data inválida"}
                     </TableCell>
                     <TableCell>
                       {a.canal === "whatsapp" ? (
@@ -88,7 +99,7 @@ export default function Agendamentos() {
                       )}
                     </TableCell>
                     <TableCell className="uppercase text-xs text-slate-500 font-medium">
-                      {a.referencia_tipo.replace(/_/g, ' ')}
+                      {(a.referencia_tipo || "").replace(/_/g, ' ')}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="bg-amber-100 text-amber-800">{a.status}</Badge>
