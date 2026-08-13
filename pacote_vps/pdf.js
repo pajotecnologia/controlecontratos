@@ -19,11 +19,12 @@ async function fetchImageBuffer(url) {
       const base64 = url.split(",")[1] || "";
       return Buffer.from(base64, "base64");
     }
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const arrayBuffer = await res.arrayBuffer();
     return Buffer.from(arrayBuffer);
-  } catch {
+  } catch (err) {
+    console.error(`Erro ao carregar imagem ${url}:`, err.message);
     return null;
   }
 }
@@ -174,13 +175,25 @@ async function buildPropostaPdf(p, itens, comp, baseUrl) {
   doc.y += 26;
 
   checkPageBreak(90);
+
+  if (p.observacoes) {
+    doc.moveDown(2);
+    const needed = doc.font("Helvetica").fontSize(9).heightOfString(p.observacoes, { width: usableWidth - 30 }) + 30;
+    checkPageBreak(needed);
+    const boxY = doc.y;
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#1e293b").text("OBSERVAÇÕES", doc.page.margins.left + 15, boxY + 10);
+    doc.font("Helvetica").fontSize(9).fillColor("#334155").text(p.observacoes, doc.page.margins.left + 15, boxY + 25, { width: usableWidth - 30 });
+    const boxHeight = doc.y - boxY + 10;
+    doc.rect(doc.page.margins.left, boxY, usableWidth, boxHeight).strokeColor("#e2e8f0").lineWidth(1).stroke();
+    doc.y = boxY + boxHeight + 10;
+  }
   doc.moveDown(2);
   const sigY = doc.y;
   const colWidth = usableWidth / 2 - 15;
   const col1 = doc.page.margins.left;
   const col2 = doc.page.margins.left + usableWidth / 2 + 15;
 
-  const empresaAssinaturaBuffer = comp.assinatura_imagem ? await fetchImageBuffer(comp.assinatura_imagem) : null;
+  const empresaAssinaturaBuffer = comp.assinatura_imagem ? await fetchImageBuffer(resolveUrl(comp.assinatura_imagem, baseUrl)) : null;
   if (empresaAssinaturaBuffer) {
     try {
       doc.image(empresaAssinaturaBuffer, col1 + colWidth / 2 - 40, sigY, { fit: [80, 40] });
@@ -207,44 +220,139 @@ async function buildReciboPdf(p, comp, baseUrl) {
   const doc = new PDFDocument({ margin: 50, size: "A4" });
   const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-  if (comp && comp.name) {
+  if (comp) {
     await drawCabecalhoEmpresa(doc, comp, baseUrl);
   }
 
-  doc.font("Helvetica-Bold").fontSize(16).text("Recibo de Pagamento", { align: "center" });
-  doc.moveDown(1.5);
+  // Título e Emissão
+  const titulo = p.pago ? "RECIBO DE PAGAMENTO" : "DEMONSTRATIVO DE PARCELA (EM ABERTO)";
+  doc.font("Helvetica-Bold").fontSize(16).fillColor("#0f172a")
+    .text(titulo, { align: "center" });
+  doc.font("Helvetica").fontSize(9).fillColor("#64748b")
+    .text(`Parcela ${p.numero_parcela} de ${p.qtde_parcelas || 1}${p.mes_referencia ? ` | Referência: ${p.mes_referencia}` : ""} | Emitido em: ${fmtData(new Date())}`, { align: "center" });
+  doc.moveDown(1);
+  doc.fillColor("#1e293b");
 
-  const clienteNome = p.cliente_nome || p.venda_cliente || "";
-  const valor = fmtMoeda(p.valor);
-  const vencimento = fmtData(p.data_vencimento);
-  const pagamento = p.data_pagamento ? fmtData(p.data_pagamento) : "-";
-
+  // Box do Cliente
   const boxY = doc.y;
-  const rows = [
-    ["Cliente:", clienteNome],
-    ["Parcela:", String(p.numero_parcela)],
-    ["Valor:", `R$ ${valor}`],
-    ["Vencimento:", vencimento],
-    ["Data do Pagamento:", pagamento],
-  ];
-  if (p.mes_referencia) rows.push(["Mês de Referência:", p.mes_referencia]);
-  if (p.numero_nf) rows.push(["N.F.:", p.numero_nf]);
+  doc.font("Helvetica-Bold").fontSize(10).text("DADOS DO CLIENTE", doc.page.margins.left + 10, boxY + 8);
+  doc.font("Helvetica").fontSize(9);
+  const col1X = doc.page.margins.left + 10;
+  const col2X = doc.page.margins.left + usableWidth / 2;
+  let lineY = boxY + 24;
+  const clienteNome = p.cliente_nome || p.venda_cliente || "-";
+  doc.text(`Cliente: ${clienteNome}`, col1X, lineY, { width: usableWidth / 2 - 20 });
+  doc.text(`CPF/CNPJ: ${p.cliente_cpf_cnpj || "-"}`, col2X, lineY, { width: usableWidth / 2 - 20 });
+  lineY += 14;
+  doc.text(`Endereço: ${p.cliente_endereco || "-"}`, col1X, lineY, { width: usableWidth / 2 - 20 });
+  doc.text(`Telefone: ${p.cliente_telefone || "-"}`, col2X, lineY, { width: usableWidth / 2 - 20 });
+  lineY += 14;
+  doc.text(`E-mail: ${p.cliente_email || "-"}`, col1X, lineY, { width: usableWidth / 2 - 20 });
+  doc.font("Helvetica-Bold").fillColor(p.pago ? "#16a34a" : "#d97706")
+    .text(`Status: ${p.pago ? "QUITADA" : "EM ABERTO"}`, col2X, lineY, { width: usableWidth / 2 - 20 });
+  doc.fillColor("#1e293b").font("Helvetica");
 
-  doc.font("Helvetica").fontSize(11);
-  let y = boxY + 15;
-  rows.forEach(([label, value]) => {
-    doc.font("Helvetica-Bold").text(label, doc.page.margins.left + 15, y, { continued: true, width: 160 });
-    doc.font("Helvetica").text(` ${value}`);
-    y = doc.y + 6;
-  });
-  doc.rect(doc.page.margins.left, boxY, usableWidth, y - boxY + 10)
+  const boxHeight = lineY + 20 - boxY;
+  doc.rect(doc.page.margins.left, boxY, usableWidth, boxHeight)
     .strokeColor("#e2e8f0").lineWidth(1).stroke();
-  doc.y = y + 25;
+  doc.y = boxY + boxHeight + 15;
 
-  doc.font("Helvetica-Bold").fontSize(11).fillColor("#059669")
-    .text("Pagamento confirmado. Obrigado!", { align: "center" });
+  // Tabela da Parcela
+  const colDesc = usableWidth * 0.40;
+  const colParc = usableWidth * 0.12;
+  const colVenc = usableWidth * 0.16;
+  const colPag = usableWidth * 0.16;
+  const colVal = usableWidth * 0.16;
+  const tableX = doc.page.margins.left;
+
+  const drawRow = (cells, y, height, opts = {}) => {
+    const { bold = false, bg = null, align = ["left", "center", "center", "center", "right"] } = opts;
+    if (bg) doc.rect(tableX, y, usableWidth, height).fill(bg);
+    doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9).fillColor("#1e293b");
+    let x = tableX;
+    const widths = [colDesc, colParc, colVenc, colPag, colVal];
+    cells.forEach((text, i) => {
+      doc.text(text, x + 4, y + 6, { width: widths[i] - 8, align: align[i] });
+      x += widths[i];
+    });
+    doc.rect(tableX, y, usableWidth, height).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
+  };
+
+  drawRow(["Descrição do Lançamento", "Parcela", "Vencimento", "Pagamento", "Valor"], doc.y, 24, { bold: true, bg: "#f1f5f9" });
+  doc.y += 24;
+
+  const descContrato = `Contrato: ${p.venda_cliente || "Serviço Prestado"}${p.mes_referencia ? ` (${p.mes_referencia})` : ""}`;
+  const numParcStr = `${p.numero_parcela}ª / ${p.qtde_parcelas || 1}`;
+  const vencStr = fmtData(p.data_vencimento);
+  const pagStr = p.pago ? (p.data_pagamento ? fmtData(p.data_pagamento) : "Quitada") : "Em aberto";
+  const valStr = `R$ ${fmtMoeda(p.valor)}`;
+
+  drawRow([descContrato, numParcStr, vencStr, pagStr, valStr], doc.y, 24);
+  doc.y += 24;
+
+  drawRow(["", "", "", "VALOR TOTAL:", valStr], doc.y, 24, { bold: true, bg: "#f8fafc", align: ["left", "center", "center", "right", "right"] });
+  doc.y += 24;
+
+  // Observações se existirem
+  if (p.numero_nf || p.observacao || p.asaas_pix_copy_paste) {
+    doc.moveDown(1);
+    const obsY = doc.y;
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#1e293b").text("OBSERVAÇÕES E INFORMAÇÕES DE PAGAMENTO", doc.page.margins.left + 10, obsY + 8);
+    doc.font("Helvetica").fontSize(9);
+    let oLine = obsY + 22;
+    if (p.numero_nf) {
+      doc.text(`Nota Fiscal Nº: ${p.numero_nf}`, doc.page.margins.left + 10, oLine);
+      oLine += 14;
+    }
+    if (p.observacao) {
+      doc.text(`Observação: ${p.observacao}`, doc.page.margins.left + 10, oLine, { width: usableWidth - 20 });
+      oLine += 14;
+    }
+    if (p.asaas_pix_copy_paste) {
+      doc.text(`PIX Copia e Cola: ${p.asaas_pix_copy_paste}`, doc.page.margins.left + 10, oLine, { width: usableWidth - 20 });
+      oLine += 14;
+    }
+    const obsHeight = oLine + 6 - obsY;
+    doc.rect(doc.page.margins.left, obsY, usableWidth, obsHeight).strokeColor("#e2e8f0").lineWidth(1).stroke();
+    doc.y = obsY + obsHeight + 10;
+  }
+
+  doc.moveDown(1.5);
+  const declaracao = p.pago
+    ? `Declaramos para os devidos fins que recebemos de ${clienteNome} a importância de R$ ${fmtMoeda(p.valor)} referente à quitação da parcela ${p.numero_parcela}${p.mes_referencia ? ` (${p.mes_referencia})` : ""}.`
+    : `Demonstrativo de cobrança referente à parcela ${p.numero_parcela}${p.mes_referencia ? ` (${p.mes_referencia})` : ""} no valor de R$ ${fmtMoeda(p.valor)} com vencimento em ${vencStr}.`;
+  doc.font("Helvetica").fontSize(9).fillColor("#475569").text(declaracao, { align: "center", width: usableWidth });
+
+  // Assinaturas
+  doc.moveDown(3);
+  const sigY = doc.y;
+  const colWidth = usableWidth / 2 - 15;
+  const col1 = doc.page.margins.left;
+  const col2 = doc.page.margins.left + usableWidth / 2 + 15;
+
+  const empresaAssinaturaBuffer = comp && comp.assinatura_imagem ? await fetchImageBuffer(resolveUrl(comp.assinatura_imagem, baseUrl)) : null;
+  if (empresaAssinaturaBuffer) {
+    try {
+      doc.image(empresaAssinaturaBuffer, col1 + colWidth / 2 - 40, sigY - 40, { fit: [80, 35] });
+    } catch {}
+  }
+
+  doc.moveTo(col1, sigY).lineTo(col1 + colWidth, sigY).strokeColor("#94a3b8").lineWidth(1).stroke();
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#1e293b")
+    .text((comp && comp.name) || "Assinatura da Empresa", col1, sigY + 5, { width: colWidth, align: "center" });
+  if (comp && comp.nome_responsavel) {
+    doc.font("Helvetica").fontSize(8).fillColor("#64748b")
+      .text(comp.nome_responsavel, col1, doc.y, { width: colWidth, align: "center" });
+  }
+
+  doc.moveTo(col2, sigY).lineTo(col2 + colWidth, sigY).strokeColor("#94a3b8").lineWidth(1).stroke();
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#1e293b")
+    .text(clienteNome, col2, sigY + 5, { width: colWidth, align: "center" });
+  doc.font("Helvetica").fontSize(8).fillColor("#64748b")
+    .text("Assinatura do Cliente", col2, doc.y, { width: colWidth, align: "center" });
 
   return docToBuffer(doc);
 }
 
 module.exports = { buildPropostaPdf, buildReciboPdf };
+

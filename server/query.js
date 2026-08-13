@@ -132,6 +132,7 @@ function buildQuery({ table, select, filters = [], order, limit, scope }) {
     ident(f.column);
     params.push(f.value);
     if (f.op === "in") where.push(`${alias}.${f.column} = ANY($${params.length})`);
+    else if (f.op === "neq") where.push(`${alias}.${f.column} != $${params.length}`);
     else where.push(`${alias}.${f.column} = $${params.length}`);
   }
   if (scope && !scope.isAdmin) {
@@ -164,7 +165,13 @@ function buildUpdate(table, values, filters = []) {
   if (!READABLE_TABLES.has(table)) throw new Error(`Tabela não permitida: ${table}`);
   const params = [];
   const sets = Object.keys(values).map((c) => { ident(c); params.push(values[c]); return `${c} = $${params.length}`; });
-  const where = filters.map((f) => { ident(f.column); params.push(f.value); return `${f.column} = $${params.length}`; });
+  const where = filters.map((f) => {
+    ident(f.column);
+    params.push(f.value);
+    if (f.op === "in") return `${f.column} = ANY($${params.length})`;
+    if (f.op === "neq") return `${f.column} != $${params.length}`;
+    return `${f.column} = $${params.length}`;
+  });
   const sql = `UPDATE ${table} SET ${sets.join(", ")}${where.length ? ` WHERE ${where.join(" AND ")}` : ""} RETURNING *`;
   return { sql, params };
 }
@@ -173,7 +180,13 @@ function buildDelete(table, filters = []) {
   ident(table);
   if (!READABLE_TABLES.has(table)) throw new Error(`Tabela não permitida: ${table}`);
   const params = [];
-  const where = filters.map((f) => { ident(f.column); params.push(f.value); return `${f.column} = $${params.length}`; });
+  const where = filters.map((f) => {
+    ident(f.column);
+    params.push(f.value);
+    if (f.op === "in") return `${f.column} = ANY($${params.length})`;
+    if (f.op === "neq") return `${f.column} != $${params.length}`;
+    return `${f.column} = $${params.length}`;
+  });
   const sql = `DELETE FROM ${table}${where.length ? ` WHERE ${where.join(" AND ")}` : ""} RETURNING *`;
   return { sql, params };
 }

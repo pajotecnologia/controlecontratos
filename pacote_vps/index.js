@@ -83,9 +83,12 @@ app.post("/auth/update-password", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/version", (_req, res) => res.json({ version: "v2.0-reset-link-active", updated_at: "2026-08-03" }));
+
 // Solicitar reset: gera token. Retorna o link (email real depende de SMTP configurado).
 app.post("/auth/request-reset", async (req, res) => {
   const { email, redirect_to } = req.body;
+  console.log(`[AUTH-RESET] Solicitando reset de senha para: ${email}`);
   try {
     const { rows } = await db.query("SELECT id FROM users WHERE email = $1", [email]);
     if (!rows.length) return res.json({ success: true }); // não revela se email existe
@@ -96,9 +99,29 @@ app.post("/auth/request-reset", async (req, res) => {
       [rows[0].id, token, expires]
     );
     const link = `${redirect_to || ""}?token=${token}`;
+    const assunto = "Redefinição de Senha - PAJO Tecnologia";
+    const corpoText = `Olá,\n\nRecebemos uma solicitação para redefinir a senha da sua conta no sistema de Controle de Contratos.\n\nPara cadastrar uma nova senha, acesse o link abaixo:\n${link}\n\nEste link é válido por 1 hora.\n\nSe você não solicitou esta alteração, desconsidere este e-mail.`;
+    const corpoHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
+        <h2 style="color: #0f172a; margin-top: 0;">Redefinição de Senha</h2>
+        <p style="color: #334155; font-size: 15px;">Olá,</p>
+        <p style="color: #334155; font-size: 15px;">Recebemos uma solicitação para redefinir a senha da sua conta no sistema de Controle de Contratos.</p>
+        <div style="margin: 28px 0; text-align: center;">
+          <a href="${link}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 15px; display: inline-block;">Redefinir Minha Senha</a>
+        </div>
+        <p style="color: #64748b; font-size: 13px;">Ou se preferir, copie e cole o link abaixo no seu navegador:<br>
+          <a href="${link}" style="color: #2563eb; word-break: break-all;">${link}</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+        <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">Este link é válido por 1 hora. Se você não solicitou esta alteração, pode ignorar este e-mail com segurança.</p>
+      </div>
+    `;
+
     try {
-      await sendEmail({ test: true, test_email: email, _reset_link: link });
-    } catch { /* SMTP pode não estar configurado; link volta na resposta */ }
+      await sendEmailDireto(email, assunto, corpoText, corpoHtml);
+    } catch (emailErr) {
+      console.error("Erro ao enviar e-mail de redefinição de senha:", emailErr.message);
+    }
     res.json({ success: true, reset_link: link });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -851,7 +874,7 @@ app.post("/contratos/:id/enviar-assinatura", requireAuth, async (req, res) => {
 // Endpoint público: info básica da empresa (logo, nome) para a tela de login
 app.get("/api/public/company-info", async (_req, res) => {
   try {
-    const { rows } = await db.query("SELECT name, logo_url FROM company_settings LIMIT 1");
+    const { rows } = await db.query("SELECT name, logo_url FROM company_settings ORDER BY is_default DESC, created_at ASC LIMIT 1");
     res.json(rows[0] || {});
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -908,7 +931,14 @@ app.post("/api/public/assinar/:token/preview", async (req, res) => {
       return res.json({ conteudo: c.conteudo_personalizado });
     }
 
-    const comp = (await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, nome_responsavel, cargo_responsavel, cpf_responsavel, logo_url, assinatura_imagem FROM company_settings LIMIT 1")).rows[0] || {};
+    let comp = {};
+    if (c.company_id) {
+      const compRes = await db.query("SELECT * FROM company_settings WHERE id = $1", [c.company_id]);
+      comp = compRes.rows[0] || {};
+    }
+    if (!comp.name) {
+      comp = (await db.query("SELECT * FROM company_settings ORDER BY is_default DESC, created_at ASC LIMIT 1")).rows[0] || {};
+    }
     const cliente = { nome: c.nome, telefone: c.telefone, email: c.email, cpf_cnpj: c.cpf_cnpj, endereco: c.endereco, nome_responsavel: c.c_nome_resp, cargo_responsavel: c.c_cargo_resp, cpf_responsavel: c.c_cpf_resp };
 
     let logoUrl = comp.logo_url || "";
@@ -1106,73 +1136,232 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
     const { rows: itens } = await db.query(
       "SELECT * FROM proposta_itens WHERE proposta_id = $1 ORDER BY ordem ASC", [p.id]
     );
-    const comp = (await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, nome_responsavel, logo_url FROM company_settings LIMIT 1")).rows[0] || {};
+    let comp = {};
+    if (p.company_id) {
+      const compRes = await db.query("SELECT * FROM company_settings WHERE id = $1", [p.company_id]);
+      comp = compRes.rows[0] || {};
+    }
+    if (!comp.name) {
+      const defRes = await db.query("SELECT * FROM company_settings WHERE is_default = true LIMIT 1");
+      comp = defRes.rows[0] || (await db.query("SELECT * FROM company_settings ORDER BY created_at ASC LIMIT 1")).rows[0] || {};
+    }
+
     let logoUrl = comp.logo_url || "";
     if (logoUrl && logoUrl.startsWith("/")) logoUrl = `${req.protocol}://${req.get("host")}${logoUrl}`;
     const fmtMoeda = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtData = (d) => { if (!d) return "-"; const raw = String(d); const norm = raw.includes("T") ? raw : `${raw}T12:00:00`; const dt = new Date(norm); return isNaN(dt.getTime()) ? "-" : dt.toLocaleDateString("pt-BR"); };
-    const empresaLogo = logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:80px;max-width:200px;object-fit:contain;margin-bottom:8px;" />` : "";
+    const dataEmissaoFormatada = fmtData(p.data_proposta);
+    const dataHojeFormatada = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+    const empresaLogo = logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:80px;max-width:220px;object-fit:contain;" />` : "";
     const compEndereco = [comp.endereco, comp.bairro, comp.cidade, comp.cep ? `CEP: ${comp.cep}` : ""].filter(Boolean).join(" - ");
     const compContato = [comp.telefone ? `Tel.: ${comp.telefone}` : "", comp.email ? `Email: ${comp.email}` : ""].filter(Boolean).join(" | ");
-    const rowsHtml = itens.map((item, idx) => {
-      let imgHtml = "";
-      if (item.imagem_url) {
-        let imgSrc = item.imagem_url;
-        if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
-        imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:100px;max-width:150px;object-fit:contain;margin-top:5px;" />`;
-      }
-      return `<tr>
-        <td style="border:1px solid #cbd5e1;padding:8px;">${idx + 1}. ${item.descricao}${imgHtml}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${item.quantidade}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:right;">R$ ${fmtMoeda(item.valor_unitario)}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:right;">R$ ${fmtMoeda(item.total)}</td>
-      </tr>`;
-    }).join("");
     const desc = Number(p.desconto || 0);
     const total = Number(p.total || 0);
-    const totalItens = itens.reduce((s, i) => s + Number(i.total || 0), 0);
-    const descRow = desc > 0 ? `
-      <tr><td colspan="3" style="border:1px solid #cbd5e1;padding:8px;text-align:right;">Subtotal:</td><td style="border:1px solid #cbd5e1;padding:8px;text-align:right;">R$ ${fmtMoeda(totalItens)}</td></tr>
-      <tr style="color:#dc2626;"><td colspan="3" style="border:1px solid #cbd5e1;padding:8px;text-align:right;">Desconto:</td><td style="border:1px solid #cbd5e1;padding:8px;text-align:right;">- R$ ${fmtMoeda(desc)}</td></tr>` : "";
-    const html = `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;max-width:800px;margin:0 auto;">
-      <div style="text-align:center;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:14px;">
-        ${empresaLogo}
-        <div style="font-size:16px;font-weight:bold;margin-top:6px;">${comp.name || ""}</div>
-        ${comp.cnpj ? `<div style="font-size:12px;color:#475569;">CNPJ: ${comp.cnpj}</div>` : ""}
-        ${compEndereco ? `<div style="font-size:12px;color:#475569;">${compEndereco}</div>` : ""}
-        ${compContato ? `<div style="font-size:12px;color:#475569;">${compContato}</div>` : ""}
-      </div>
-      <div style="text-align:center;margin-bottom:20px;">
-        <h1 style="font-size:20px;margin:0 0 5px;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
-        <div style="font-size:12px;color:#64748b;">Data: ${fmtData(p.data_proposta)}${p.tipo_proposta ? ` | Tipo: ${p.tipo_proposta}` : ""}</div>
-      </div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;margin-bottom:20px;font-size:13px;">
-        <div style="font-weight:bold;margin-bottom:6px;">DADOS DO CLIENTE</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-          <div><strong>Cliente:</strong> ${p.nome || "-"}</div>
-          <div><strong>CPF/CNPJ:</strong> ${p.cpf_cnpj || "-"}</div>
-          <div><strong>Endereço:</strong> ${p.endereco || "-"}</div>
-          <div><strong>Telefone:</strong> ${p.telefone || "-"}</div>
-          <div><strong>E-mail:</strong> ${p.email || "-"}</div>
+    const totalItens = it    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
+    if (modelo === "moderno") {
+      const rowsHtmlModerno = itens.map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
+          if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
+          imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:80px;max-width:130px;object-fit:contain;margin-top:6px;" />`;
+        }
+        return `<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;text-align:left;">
+            <span style="color:#64748b;margin-right:6px;">${idx + 1}.</span>
+            <strong style="color:#0f172a;">${item.descricao}</strong>${imgHtml}
+          </td>
+          <td style="padding:12px 4px;text-align:center;color:#475569;">${item.quantidade}</td>
+          <td style="padding:12px 4px;text-align:right;color:#475569;">R$ ${fmtMoeda(item.valor_unitario)}</td>
+          <td style="padding:12px 4px;text-align:right;font-weight:700;color:#0f172a;">R$ ${fmtMoeda(item.total)}</td>
+        </tr>`;
+      }).join("");
+
+      html = `<div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;max-width:800px;margin:0 auto;background:#fff;padding:30px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:35px;">
+          <div>
+            ${empresaLogo || `<div style="font-size:22px;font-weight:800;color:#0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#2563eb;font-weight:800;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
+            <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin:4px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+            <div style="font-size:12px;color:#64748b;margin-top:2px;">Data: ${dataEmissaoFormatada}</div>
+          </div>
         </div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;">
-        <thead><tr style="background:#f1f5f9;">
-          <th style="border:1px solid #cbd5e1;padding:8px;text-align:left;">Descrição</th>
-          <th style="border:1px solid #cbd5e1;padding:8px;text-align:center;width:60px;">Qtd</th>
-          <th style="border:1px solid #cbd5e1;padding:8px;text-align:right;width:110px;">Unitário</th>
-          <th style="border:1px solid #cbd5e1;padding:8px;text-align:right;width:110px;">Total</th>
-        </tr></thead>
-        <tbody>
-          ${rowsHtml}
-          ${descRow}
-          <tr style="font-weight:bold;background:#f8fafc;">
-            <td colspan="3" style="border:1px solid #cbd5e1;padding:10px;text-align:right;">VALOR TOTAL:</td>
-            <td style="border:1px solid #cbd5e1;padding:10px;text-align:right;">R$ ${fmtMoeda(total)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>`;
+        <div style="margin-bottom:35px;font-size:13px;">
+          <div style="font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Informações do Cliente</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div><span style="color:#64748b;">Cliente:</span> <strong>${p.nome || "-"}</strong></div>
+            <div><span style="color:#64748b;">CPF/CNPJ:</span> <strong>${p.cpf_cnpj || "-"}</strong></div>
+            <div><span style="color:#64748b;">Telefone:</span> <strong>${p.telefone || "-"}</strong></div>
+            <div><span style="color:#64748b;">E-mail:</span> <strong>${p.email || "-"}</strong></div>
+            <div style="grid-column:span 2;"><span style="color:#64748b;">Endereço:</span> <strong>${p.endereco || "-"}</strong></div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:30px;font-size:13px;">
+          <thead><tr style="border-bottom:2px solid #0f172a;color:#0f172a;">
+            <th style="padding:10px 4px;text-align:left;font-weight:800;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Descrição</th>
+            <th style="padding:10px 4px;text-align:center;font-weight:800;text-transform:uppercase;font-size:11px;width:60px;">Qtd</th>
+            <th style="padding:10px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:11px;width:120px;">Unitário</th>
+            <th style="padding:10px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:11px;width:120px;">Total</th>
+          </tr></thead>
+          <tbody>${rowsHtmlModerno}</tbody>
+        </table>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:35px;text-align:right;">
+          <div>
+            ${desc > 0 ? `<div style="font-size:12px;color:#dc2626;margin-bottom:4px;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
+            <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Valor Total</div>
+            <div style="font-size:24px;font-weight:900;color:#0f172a;">R$ ${fmtMoeda(total)}</div>
+          </div>
+        </div>
+        ${p.observacoes ? `<div style="margin-bottom:40px;font-size:13px;">
+          <div style="font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Observações</div>
+          <div style="white-space:pre-wrap;color:#475569;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>` : ""}
+        <div style="margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;font-size:11px;color:#64748b;line-height:1.6;">
+          <div style="font-weight:700;color:#0f172a;font-size:12px;margin-bottom:2px;">${comp.name || "Sua Empresa"}</div>
+          <div>${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}</div>
+          <div>${compContato}</div>
+          <div style="font-style:italic;margin-top:4px;font-size:10px;">Emitido em ${dataEmissaoFormatada}.</div>
+        </div>
+      </div>`;
+    } else if (modelo === "elegante") {
+      // MODELO 3: ELEGANTE / EXECUTIVO (Georgia Serif, Linha Fina Ouro)
+      const rowsHtmlElegante = itens.map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
+          if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
+          imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:80px;max-width:130px;object-fit:contain;margin-top:6px;border:1px solid #d97706;" />`;
+        }
+        return `<tr style="border-bottom:1px solid #f3ebd8;">
+          <td style="padding:10px 10px;text-align:left;font-family:Georgia,serif;">
+            <span style="color:#d97706;font-weight:bold;margin-right:6px;">${idx + 1}.</span>
+            <span style="color:#0f172a;font-weight:600;">${item.descricao}</span>${imgHtml}
+          </td>
+          <td style="padding:10px 10px;text-align:center;color:#374151;font-family:Arial,sans-serif;">${item.quantidade}</td>
+          <td style="padding:10px 10px;text-align:right;color:#4b5563;font-family:Arial,sans-serif;">R$ ${fmtMoeda(item.valor_unitario)}</td>
+          <td style="padding:10px 10px;text-align:right;font-weight:bold;color:#92400e;font-family:Georgia,serif;">R$ ${fmtMoeda(item.total)}</td>
+        </tr>`;
+      }).join("");
+
+      html = `<div style="font-family:Georgia,serif;color:#1f2937;max-width:800px;margin:0 auto;background:#fff;padding:40px;border:1px solid #e5e7eb;box-shadow:0 4px 15px rgba(0,0,0,0.03);">
+        <div style="height:3px;background:#d97706;margin-bottom:28px;"></div>
+        <div style="text-align:center;border-bottom:1px solid #f3ebd8;padding-bottom:20px;margin-bottom:28px;">
+          ${empresaLogo ? `<div style="margin-bottom:12px;">${empresaLogo}</div>` : ""}
+          <div style="font-size:22px;font-weight:bold;color:#0f172a;letter-spacing:1px;text-transform:uppercase;">${comp.name || "Sua Empresa"}</div>
+          <div style="font-size:12px;color:#6b7280;font-family:Arial,sans-serif;margin-top:4px;">${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}</div>
+          ${compContato ? `<div style="font-size:12px;color:#6b7280;font-family:Arial,sans-serif;margin-top:2px;">${compContato}</div>` : ""}
+        </div>
+        <div style="text-align:center;margin-bottom:28px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#d97706;font-weight:bold;font-family:Arial,sans-serif;">PROPOSTA COMERCIAL</div>
+          <h1 style="font-size:22px;font-weight:normal;color:#0f172a;margin:4px 0;font-style:italic;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+          <div style="font-size:12px;color:#6b7280;font-family:Arial,sans-serif;margin-top:2px;">Emissão: ${dataEmissaoFormatada}</div>
+        </div>
+        <div style="background-color:#fdfbf7;border:1px solid #f3ebd8;padding:18px;margin-bottom:28px;border-radius:4px;">
+          <div style="font-size:11px;font-weight:bold;color:#92400e;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #f3ebd8;padding-bottom:6px;margin-bottom:10px;font-family:Arial,sans-serif;">DADOS DO CLIENTE</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;font-family:Arial,sans-serif;">
+            <div><strong style="color:#1e293b;">Cliente:</strong> ${p.nome || "-"}</div>
+            <div><strong style="color:#1e293b;">CPF/CNPJ:</strong> ${p.cpf_cnpj || "-"}</div>
+            <div><strong style="color:#1e293b;">Telefone:</strong> ${p.telefone || "-"}</div>
+            <div><strong style="color:#1e293b;">E-mail:</strong> ${p.email || "-"}</div>
+            <div style="grid-column:span 2;"><strong style="color:#1e293b;">Endereço:</strong> ${p.endereco || "-"}</div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:28px;font-size:13px;">
+          <thead><tr style="background-color:#0f172a;color:#fff;font-family:Arial,sans-serif;">
+            <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Descrição do Serviço / Produto</th>
+            <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:11px;text-transform:uppercase;width:60px;">Qtd</th>
+            <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;width:120px;">Unitário</th>
+            <th style="padding:10px 12px;text-align:right;font-weight:600;font-size:11px;text-transform:uppercase;width:120px;">Total</th>
+          </tr></thead>
+          <tbody>${rowsHtmlElegante}</tbody>
+        </table>
+        <div style="background:#0f172a;color:#fff;padding:14px 20px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;font-family:Arial,sans-serif;">
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;">Valor Total da Proposta</div>
+            ${desc > 0 ? `<div style="font-size:12px;color:#f87171;margin-top:2px;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
+          </div>
+          <div style="font-size:22px;font-weight:bold;color:#f59e0b;font-family:Georgia,serif;">R$ ${fmtMoeda(total)}</div>
+        </div>
+        ${p.observacoes ? `<div style="border-left:3px solid #d97706;padding:14px 18px;background:#fdfbf7;margin-bottom:32px;font-size:13px;font-family:Arial,sans-serif;">
+          <div style="font-weight:bold;color:#92400e;margin-bottom:4px;font-size:12px;text-transform:uppercase;">Observações</div>
+          <div style="white-space:pre-wrap;color:#4b5563;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>` : ""}
+      </div>`;
+    }ce:pre-wrap;color:#4b5563;line-height:1.6;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>` : ""}
+      </div>`;
+    } else {
+      // MODELO 1: CLÁSSICO / CORPORATIVO (Default)
+      const rowsHtml = itens.map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
+          if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
+          imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:100px;max-width:150px;object-fit:contain;margin-top:5px;border-radius:4px;border:1px solid #e2e8f0;" />`;
+        }
+        return `<tr>
+          <td style="border:1px solid #cbd5e1;padding:10px;text-align:left;"><strong>${idx + 1}.</strong> ${item.descricao}${imgHtml}</td>
+          <td style="border:1px solid #cbd5e1;padding:10px;text-align:center;">${item.quantidade}</td>
+          <td style="border:1px solid #cbd5e1;padding:10px;text-align:right;">R$ ${fmtMoeda(item.valor_unitario)}</td>
+          <td style="border:1px solid #cbd5e1;padding:10px;text-align:right;">R$ ${fmtMoeda(item.total)}</td>
+        </tr>`;
+      }).join("");
+
+      const descRow = desc > 0 ? `
+        <tr style="font-weight:bold;"><td colspan="3" style="border:1px solid #cbd5e1;padding:10px;text-align:right;font-size:13px;">Valor dos Itens:</td><td style="border:1px solid #cbd5e1;padding:10px;text-align:right;font-size:13px;">R$ ${fmtMoeda(totalItens)}</td></tr>
+        <tr style="font-weight:bold;color:#dc2626;"><td colspan="3" style="border:1px solid #cbd5e1;padding:10px;text-align:right;font-size:13px;">Desconto:</td><td style="border:1px solid #cbd5e1;padding:10px;text-align:right;font-size:13px;">- R$ ${fmtMoeda(desc)}</td></tr>` : "";
+
+      html = `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;max-width:800px;margin:0 auto;background:#ffffff;border-top:6px solid #0f172a;border-bottom:2px solid #cbd5e1;padding:20px;">
+        <div style="text-align:center;border-bottom:2px solid #334155;padding-bottom:16px;margin-bottom:24px;">
+          ${empresaLogo}
+          <div style="font-size:20px;font-weight:bold;color:#0f172a;margin-top:6px;">${comp.name || "Sua Empresa"}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px;">
+            ${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` | ${compEndereco}` : ""}
+          </div>
+          ${compContato ? `<div style="font-size:12px;color:#64748b;">${compContato}</div>` : ""}
+        </div>
+        <div style="text-align:center;margin-bottom:25px;">
+          <h1 style="font-size:22px;margin:0 0 5px 0;font-weight:bold;color:#0f172a;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+          <div style="font-size:13px;color:#64748b;">Data de Emissão: ${dataEmissaoFormatada}</div>
+        </div>
+        <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px;margin-bottom:25px;font-size:13px;">
+          <div style="font-weight:bold;font-size:13px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;color:#0f172a;">DADOS DO CLIENTE</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div><strong>Cliente:</strong> ${p.nome || "-"}</div>
+            <div><strong>CPF/CNPJ:</strong> ${p.cpf_cnpj || "-"}</div>
+            <div><strong>Endereço:</strong> ${p.endereco || "-"}</div>
+            <div><strong>Telefone:</strong> ${p.telefone || "-"}</div>
+            <div><strong>E-mail:</strong> ${p.email || "-"}</div>
+            <div><strong>Tipo de Proposta:</strong> ${p.tipo_proposta || "-"}</div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:30px;font-size:13px;">
+          <thead>
+            <tr style="background-color:#334155;color:#ffffff;">
+              <th style="border:1px solid #334155;padding:10px;text-align:left;font-weight:bold;">Descrição do Produto / Serviço</th>
+              <th style="border:1px solid #334155;padding:10px;text-align:center;font-weight:bold;width:80px;">Qtd</th>
+              <th style="border:1px solid #334155;padding:10px;text-align:right;font-weight:bold;width:120px;">Val. Unitário</th>
+              <th style="border:1px solid #334155;padding:10px;text-align:right;font-weight:bold;width:120px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            ${descRow}
+            <tr style="font-weight:bold;background-color:#f8fafc;">
+              <td colspan="3" style="border:1px solid #cbd5e1;padding:12px;text-align:right;font-size:14px;">VALOR TOTAL DA PROPOSTA:</td>
+              <td style="border:1px solid #cbd5e1;padding:12px;text-align:right;font-size:14px;color:#0f172a;">R$ ${fmtMoeda(total)}</td>
+            </tr>
+          </tbody>
+        </table>
+        ${p.observacoes ? `<div style="margin-bottom:30px;font-size:13px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px;">
+          <div style="font-weight:bold;font-size:13px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;color:#0f172a;">OBSERVAÇÕES</div>
+          <div style="white-space:pre-wrap;color:#334155;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>` : ""}
+      </div>`;
+    }
+
     res.json({ conteudo: html });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1389,6 +1578,7 @@ app.post("/propostas/:id/enviar-whatsapp", requireAuth, async (req, res) => {
         caption: msg,
         media: pdfBuffer.toString("base64"),
       }),
+      signal: AbortSignal.timeout(15000)
     });
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -1498,23 +1688,16 @@ app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// Servir o frontend compilado (SPA)
-// ============================================================================
-const PUBLIC_DIR = path.join(__dirname, "public");
-if (fs.existsSync(PUBLIC_DIR)) {
-  app.use(express.static(PUBLIC_DIR));
-  app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
-}
 
-const PORT = process.env.PORT || 3001;
+
+const PORT = process.env.PORT || 3005;
 
 app.post("/notify/agendar", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
     const { data_agendamento, canal, referencia_tipo, payload } = req.body;
     const { rows } = await db.query(
-      "INSERT INTO agendamentos_envio (data_agendamento, canal, referencia_tipo, payload) VALUES ($1, $2, $3, $4) RETURNING *",
+      "INSERT INTO agendamento_mensagens (data_agendamento, canal, referencia_tipo, payload) VALUES ($1, $2, $3, $4) RETURNING *",
       [data_agendamento, canal, referencia_tipo, payload]
     );
     res.json(rows[0]);
@@ -1524,7 +1707,7 @@ app.post("/notify/agendar", requireAuth, async (req, res) => {
 app.get("/notify/agendamentos", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
-    const { rows } = await db.query("SELECT * FROM agendamentos_envio WHERE status = 'pendente' ORDER BY data_agendamento ASC");
+    const { rows } = await db.query("SELECT * FROM agendamento_mensagens WHERE status = 'pendente' ORDER BY data_agendamento ASC");
     res.json(rows);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -1532,7 +1715,7 @@ app.get("/notify/agendamentos", requireAuth, async (req, res) => {
 app.delete("/notify/agendamentos/:id", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
-    await db.query("UPDATE agendamentos_envio SET status = 'cancelado' WHERE id = $1", [req.params.id]);
+    await db.query("UPDATE agendamento_mensagens SET status = 'cancelado' WHERE id = $1", [req.params.id]);
     res.json({ success: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -1540,7 +1723,7 @@ app.delete("/notify/agendamentos/:id", requireAuth, async (req, res) => {
 // CRON JOB para processar envios agendados
 setInterval(async () => {
   try {
-    const { rows } = await db.query("SELECT * FROM agendamentos_envio WHERE status = 'pendente' AND data_agendamento <= NOW()");
+    const { rows } = await db.query("SELECT * FROM agendamento_mensagens WHERE status = 'pendente' AND data_agendamento <= NOW()");
     if (!rows.length) return;
     const adminQuery = await db.query("SELECT user_id FROM user_roles WHERE role = 'admin' LIMIT 1");
     if (!adminQuery.rows.length) return;
@@ -1552,20 +1735,90 @@ setInterval(async () => {
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify(job.payload.body || {})
+          body: JSON.stringify(job.payload.body || {}),
+          signal: AbortSignal.timeout(30000)
         });
         const json = await res.json().catch(()=>({}));
         if (res.ok) {
-          await db.query("UPDATE agendamentos_envio SET status = 'enviado' WHERE id = $1", [job.id]);
+          await db.query("UPDATE agendamento_mensagens SET status = 'enviado' WHERE id = $1", [job.id]);
         } else {
           const err = json.error || "Erro desconhecido HTTP " + res.status;
-          await db.query("UPDATE agendamentos_envio SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [err, job.id]);
+          await db.query("UPDATE agendamento_mensagens SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [err, job.id]);
         }
       } catch(e) {
-        await db.query("UPDATE agendamentos_envio SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [e.message, job.id]);
+        await db.query("UPDATE agendamento_mensagens SET status = 'erro', log_erro = $1, tentativas = tentativas + 1 WHERE id = $2", [e.message, job.id]);
       }
     }
   } catch(e) { console.error("Erro no cron de agendamentos:", e); }
 }, 60000);
+// ============================================================================
+// Servir o frontend compilado (SPA)
+// ============================================================================
+const PUBLIC_DIR = path.join(__dirname, "public");
+if (fs.existsSync(PUBLIC_DIR)) {
+  app.use(express.static(PUBLIC_DIR));
+  app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
+}
 
-app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+// Auto-criar tabelas agendamento_mensagens e password_reset_tokens se nao existirem
+async function initTables() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS agendamento_mensagens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        data_agendamento TIMESTAMP WITH TIME ZONE NOT NULL,
+        canal VARCHAR(50) NOT NULL,
+        referencia_tipo VARCHAR(100) NOT NULL,
+        payload JSONB NOT NULL,
+        status VARCHAR(20) DEFAULT 'pendente',
+        tentativas INT DEFAULT 0,
+        log_erro TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+  } catch (err) {
+    console.log("[AVISO BD] agendamento_mensagens:", err.message);
+  }
+
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (err) {
+    console.log("[AVISO BD] password_reset_tokens:", err.message);
+  }
+
+  try {
+    await db.query(`
+      ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT false;
+      ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS assinatura_imagem TEXT DEFAULT NULL;
+      ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS public_url TEXT DEFAULT NULL;
+      ALTER TABLE propostas ADD COLUMN IF NOT EXISTS modelo_proposta TEXT DEFAULT 'classico';
+    `);
+  } catch (err) {
+    console.log("[AVISO BD] migrations empresas/propostas:", err.message);
+  }
+}
+initTables();
+
+const server = app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`[ERRO] A porta ${PORT} está ocupada. Aguardando 3s para o PM2 liberar...`);
+    setTimeout(() => {
+      process.exit(1);
+    }, 3000);
+  } else {
+    console.error("[ERRO SERVER]", err);
+  }
+});
+
+

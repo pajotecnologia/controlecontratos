@@ -173,6 +173,9 @@ CREATE TABLE IF NOT EXISTS company_settings (
   cargo_responsavel  text DEFAULT '',
   cpf_responsavel    text DEFAULT '',
   logo_url           text DEFAULT '',
+  assinatura_imagem  text DEFAULT NULL,
+  public_url         text DEFAULT NULL,
+  is_default         boolean DEFAULT false,
   created_at         timestamptz NOT NULL DEFAULT now(),
   updated_at         timestamptz NOT NULL DEFAULT now()
 );
@@ -238,9 +241,11 @@ CREATE TABLE IF NOT EXISTS propostas (
   vendedor_id     uuid REFERENCES vendedores(id) ON DELETE SET NULL,
   tipo_proposta   text DEFAULT '',
   titulo          text DEFAULT '',
+  observacoes     text DEFAULT '',
   desconto        numeric(12,2) DEFAULT 0,
   total           numeric(12,2) DEFAULT 0,
   company_id      uuid REFERENCES company_settings(id) ON DELETE SET NULL,
+  modelo_proposta text DEFAULT 'classico',
   created_by      uuid REFERENCES users(id) ON DELETE SET NULL,
   -- Assinatura digital
   assinatura_token        text UNIQUE DEFAULT NULL,
@@ -318,7 +323,7 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_user           ON user_roles(user_id);
 CREATE INDEX IF NOT EXISTS idx_parcelas_venda            ON parcelas(venda_id);
 CREATE INDEX IF NOT EXISTS idx_propostas_cliente          ON propostas(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_proposta_itens_proposta     ON proposta_itens(proposta_id);
-CREATE TABLE IF NOT EXISTS agendamentos_envio (
+CREATE TABLE IF NOT EXISTS agendamento_mensagens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   data_agendamento TIMESTAMP WITH TIME ZONE NOT NULL,
   canal VARCHAR(50) NOT NULL,

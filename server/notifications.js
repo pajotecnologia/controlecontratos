@@ -130,10 +130,10 @@ async function sendWhatsApp(venda_vendedor_id, template_type = "pagamento") {
 
 async function loadParcelaRecibo(parcela_id) {
   const { rows } = await db.query(
-    `SELECT p.id, p.numero_parcela, p.valor, p.data_vencimento, p.data_pagamento, p.pago, p.numero_nf, p.mes_referencia,
+    `SELECT p.id, p.numero_parcela, p.valor, p.data_vencimento, p.data_pagamento, p.pago, p.numero_nf, p.observacao, p.mes_referencia,
             p.asaas_cobranca_id, p.asaas_boleto_url, p.asaas_pix_copy_paste, p.asaas_invoice_url,
-            v.cliente AS venda_cliente, v.valor_servico,
-            c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.email AS cliente_email
+            v.cliente AS venda_cliente, v.valor_servico, v.qtde_parcelas,
+            c.nome AS cliente_nome, c.cpf_cnpj AS cliente_cpf_cnpj, c.endereco AS cliente_endereco, c.telefone AS cliente_telefone, c.email AS cliente_email
        FROM parcelas p
        JOIN vendas v ON v.id = p.venda_id
        LEFT JOIN clientes c ON c.id = v.cliente_id
@@ -164,19 +164,23 @@ function buildReciboText(p, comp) {
     cabecalho += `----------------------------------------\n\n`;
   }
 
-  let msg = `${cabecalho}Recibo de Pagamento\n\nCliente: ${clienteNome}\nParcela: ${p.numero_parcela}\nValor: R$ ${valor}\nVencimento: ${vencimento}\nData do Pagamento: ${pagamento}`;
+  const titulo = p.pago ? "*RECIBO DE PAGAMENTO*" : "*DEMONSTRATIVO DE PARCELA (EM ABERTO)*";
+  let msg = `${cabecalho}${titulo}\n\nCliente: ${clienteNome}\nParcela: ${p.numero_parcela}${p.qtde_parcelas ? ` de ${p.qtde_parcelas}` : ""}\nValor: R$ ${valor}\nVencimento: ${vencimento}`;
+  if (p.pago) {
+    msg += `\nData do Pagamento: ${pagamento}\nStatus: Quitada\n\nPagamento confirmado. Obrigado!`;
+  } else {
+    msg += `\nStatus: Em Aberto / A Pagar\n\nSegue demonstrativo referente à parcela em aberto.`;
+  }
   if (p.mes_referencia) msg += `\nMês de Referência: ${p.mes_referencia}`;
   if (p.numero_nf) msg += `\nN.F.: ${p.numero_nf}`;
-  msg += `\n\nPagamento confirmado. Obrigado!`;
   return msg;
 }
 
 async function sendReceiptWhatsApp(parcela_id, baseUrl, mensagem) {
   const p = await loadParcelaRecibo(parcela_id);
   if (!p) throw new Error("Parcela não encontrada");
-  if (!p.pago) throw new Error("Recibo disponível apenas para parcela quitada");
 
-  const { rows: compRows } = await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, logo_url FROM company_settings LIMIT 1");
+  const { rows: compRows } = await db.query("SELECT * FROM company_settings LIMIT 1");
   const comp = compRows[0] || null;
 
   const { rows } = await db.query("SELECT * FROM evolution_settings LIMIT 1");
@@ -204,6 +208,7 @@ async function sendReceiptWhatsApp(parcela_id, baseUrl, mensagem) {
       caption: message,
       media: pdfBuffer.toString("base64"),
     }),
+    signal: AbortSignal.timeout(15000)
   });
   const result = await response.json();
   return { success: true, result };
@@ -212,8 +217,9 @@ async function sendReceiptWhatsApp(parcela_id, baseUrl, mensagem) {
 function buildReciboHtml(p, comp, logoUrl) {
   const clienteNome = p.cliente_nome || p.venda_cliente || "";
   const valor = Number(p.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
-  const vencimento = new Date(p.data_vencimento).toLocaleDateString("pt-BR");
-  const pagamento = p.data_pagamento ? new Date(p.data_pagamento).toLocaleDateString("pt-BR") : "-";
+  const vencimento = p.data_vencimento ? new Date(p.data_vencimento + (String(p.data_vencimento).includes("T") ? "" : "T12:00:00")).toLocaleDateString("pt-BR") : "-";
+  const pagamento = p.data_pagamento ? new Date(p.data_pagamento + (String(p.data_pagamento).includes("T") ? "" : "T12:00:00")).toLocaleDateString("pt-BR") : "-";
+  const dataEmissao = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 
   const endParts = [];
   if (comp && comp.endereco) endParts.push(comp.endereco);
@@ -223,35 +229,109 @@ function buildReciboHtml(p, comp, logoUrl) {
   const enderecoStr = endParts.join(", ");
 
   const logoTag = logoUrl
-    ? `<img src="${logoUrl}" alt="${(comp && comp.name) || "Logo"}" style="max-height:70px; max-width:180px; object-fit:contain;" />`
+    ? `<img src="${logoUrl}" alt="${(comp && comp.name) || "Logo"}" style="max-height:70px; max-width:180px; object-fit:contain; margin-bottom:8px;" />`
     : "";
 
   const contato = comp ? [comp.telefone ? `Tel.: ${comp.telefone}` : "", comp.email ? `Email: ${comp.email}` : ""].filter(Boolean).join(" | ") : "";
 
-  const cabecalhoHtml = comp && comp.name
-    ? `<div style="text-align:center; border-bottom:2px solid #333; padding-bottom:10px; margin-bottom:14px;">
-         ${logoTag}
-         <div style="font-size:16px; font-weight:bold; color:#1e293b; margin-top:6px;">${comp.name}</div>
-         ${comp && comp.cnpj ? `<div style="font-size:12px; color:#475569;">CNPJ: ${comp.cnpj}</div>` : ""}
-         ${enderecoStr ? `<div style="font-size:12px; color:#475569;">${enderecoStr}</div>` : ""}
-         ${contato ? `<div style="font-size:12px; color:#475569;">${contato}</div>` : ""}
-       </div>`
-    : "";
-
   return `
-    <div style="font-family: Georgia, serif; color:#1e293b; max-width:560px; margin:0 auto;">
-      ${cabecalhoHtml}
-      <h2 style="text-align:center; font-size:18px; margin:10px 0;">RECIBO DE PAGAMENTO</h2>
-      <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;">
-        <tr><td style="padding:4px 0; color:#64748b;">Cliente</td><td style="padding:4px 0; font-weight:600;">${clienteNome}</td></tr>
-        <tr><td style="padding:4px 0; color:#64748b;">Parcela</td><td style="padding:4px 0; font-weight:600;">${p.numero_parcela}</td></tr>
-        <tr><td style="padding:4px 0; color:#64748b;">Valor</td><td style="padding:4px 0; font-weight:600;">R$ ${valor}</td></tr>
-        <tr><td style="padding:4px 0; color:#64748b;">Vencimento</td><td style="padding:4px 0; font-weight:600;">${vencimento}</td></tr>
-        <tr><td style="padding:4px 0; color:#64748b;">Data do Pagamento</td><td style="padding:4px 0; font-weight:600;">${pagamento}</td></tr>
-        ${p.mes_referencia ? `<tr><td style="padding:4px 0; color:#64748b;">Mês de Referência</td><td style="padding:4px 0; font-weight:600;">${p.mes_referencia}</td></tr>` : ""}
-        ${p.numero_nf ? `<tr><td style="padding:4px 0; color:#64748b;">N.F.</td><td style="padding:4px 0; font-weight:600;">${p.numero_nf}</td></tr>` : ""}
+    <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; padding: 10px; max-width: 800px; margin: 0 auto;">
+      <!-- Cabeçalho idêntico à Proposta Comercial -->
+      <div style="text-align: center; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
+        ${logoTag}
+        <div style="font-size: 18px; font-weight: bold; color: #0f172a;">${(comp && comp.name) || "Sua Empresa"}</div>
+        <div style="font-size: 12px; color: #64748b;">
+          ${comp && comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${enderecoStr ? ` | ${enderecoStr}` : ""}
+        </div>
+        ${contato ? `<div style="font-size: 12px; color: #64748b;">${contato}</div>` : ""}
+      </div>
+
+      <!-- Título -->
+      <div style="text-align: center; margin-bottom: 25px;">
+        <h1 style="font-size: 22px; margin: 0 0 5px 0; font-weight: bold; color: #0f172a;">
+          ${p.pago ? "RECIBO DE PAGAMENTO" : "DEMONSTRATIVO DE PARCELA (EM ABERTO)"}
+        </h1>
+        <div style="font-size: 13px; color: #64748b;">
+          Parcela ${p.numero_parcela} de ${p.qtde_parcelas || 1}${p.mes_referencia ? ` — ${p.mes_referencia}` : ""}
+        </div>
+        <div style="font-size: 12px; color: #64748b;">Emitido em ${dataEmissao}</div>
+      </div>
+
+      <!-- Dados do Cliente -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 13px;">
+        <div style="font-weight: bold; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px; color: #0f172a;">DADOS DO CLIENTE</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <div><strong>Cliente:</strong> ${clienteNome}</div>
+          <div><strong>CPF/CNPJ:</strong> ${p.cliente_cpf_cnpj || "-"}</div>
+          <div><strong>Endereço:</strong> ${p.cliente_endereco || "-"}</div>
+          <div><strong>Telefone:</strong> ${p.cliente_telefone || "-"}</div>
+          <div><strong>E-mail:</strong> ${p.cliente_email || "-"}</div>
+          <div><strong>Status da Parcela:</strong> ${p.pago ? "<span style='color:#16a34a;font-weight:bold;'>QUITADA</span>" : "<span style='color:#d97706;font-weight:bold;'>EM ABERTO</span>"}</div>
+        </div>
+      </div>
+
+      <!-- Tabela de Lançamento -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px;">
+        <thead>
+          <tr style="background-color: #f1f5f9;">
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-weight: bold;">Descrição do Contrato / Lançamento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 90px;">Parcela</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 110px;">Vencimento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 120px;">Pagamento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border: 1px solid #cbd5e1; padding: 10px;">
+              Contrato: ${p.venda_cliente || "Serviço Prestado"}${p.mes_referencia ? ` (${p.mes_referencia})` : ""}
+            </td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${p.numero_parcela}ª / ${p.qtde_parcelas || 1}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${vencimento}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${p.pago ? (pagamento !== "-" ? pagamento : "Quitada") : "Em aberto"}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right;">R$ ${valor}</td>
+          </tr>
+          <tr style="font-weight: bold; background-color: #f8fafc;">
+            <td colspan="4" style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px;">VALOR TOTAL DA PARCELA:</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px; color: #0f172a;">R$ ${valor}</td>
+          </tr>
+        </tbody>
       </table>
-      <p style="text-align:center; margin-top:18px; font-size:13px; color:#16a34a; font-weight:600;">Pagamento confirmado. Obrigado!</p>
+
+      <!-- Observações / Detalhes de Pagamento -->
+      ${(p.numero_nf || p.observacao || p.asaas_pix_copy_paste) ? `
+      <div style="margin-bottom: 25px; font-size: 13px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px;">
+        <div style="font-weight: bold; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px; color: #0f172a;">OBSERVAÇÕES E INFORMAÇÕES DE PAGAMENTO</div>
+        ${p.numero_nf ? `<div style="margin-bottom:4px;"><strong>Nota Fiscal Nº:</strong> ${p.numero_nf}</div>` : ""}
+        ${p.observacao ? `<div style="white-space: pre-wrap; color: #334155; margin-bottom:4px;"><strong>Observação:</strong> ${p.observacao}</div>` : ""}
+        ${p.asaas_pix_copy_paste ? `<div style="margin-top:6px; background:#fff; border:1px dashed #cbd5e1; padding:8px; border-radius:4px;"><strong>Chave PIX Copia e Cola:</strong><br/><code style="font-size:11px; word-break:break-all;">${p.asaas_pix_copy_paste}</code></div>` : ""}
+      </div>
+      ` : ""}
+
+      <!-- Declaração -->
+      <div style="text-align: center; font-size: 13px; color: #475569; margin-bottom: 40px;">
+        ${p.pago
+          ? `Declaramos para os devidos fins que recebemos de <strong>${clienteNome}</strong> a importância de <strong>R$ ${valor}</strong> referente à quitação da parcela ${p.numero_parcela}${p.mes_referencia ? ` (${p.mes_referencia})` : ""}.`
+          : `Demonstrativo de cobrança referente à parcela ${p.numero_parcela}${p.mes_referencia ? ` (${p.mes_referencia})` : ""} no valor de <strong>R$ ${valor}</strong> com vencimento em <strong>${vencimento}</strong>.`
+        }
+      </div>
+
+      <!-- Assinatura -->
+      <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center; font-size: 13px;">
+        <div style="width: 250px;">
+          ${(comp && comp.assinatura_imagem)
+            ? `<img src="${comp.assinatura_imagem}" style="max-height:60px;display:block;margin:0 auto 5px;" />`
+            : `<div style="border-top: 1px solid #94a3b8; margin-bottom: 5px;"></div>`
+          }
+          <strong>${(comp && comp.name) || "Assinatura da Empresa"}</strong>
+          ${comp && comp.nome_responsavel ? `<div style="font-size: 11px; color: #64748b;">${comp.nome_responsavel}</div>` : ""}
+        </div>
+        <div style="width: 250px;">
+          <div style="border-top: 1px solid #94a3b8; margin-bottom: 5px;"></div>
+          <strong>${clienteNome}</strong>
+          <div style="font-size: 11px; color: #64748b;">Assinatura do Cliente</div>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -260,7 +340,7 @@ async function sendReceiptEmail(parcela_id, baseUrl, mensagem) {
   if (!p) throw new Error("Parcela não encontrada");
   if (!p.cliente_email) throw new Error("Cliente sem email cadastrado");
 
-  const { rows: compRows } = await db.query("SELECT name, cnpj, cep, endereco, bairro, cidade, email, telefone, logo_url FROM company_settings LIMIT 1");
+  const { rows: compRows } = await db.query("SELECT * FROM company_settings LIMIT 1");
   const comp = compRows[0] || null;
 
   const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
@@ -289,9 +369,10 @@ async function sendReceiptEmail(parcela_id, baseUrl, mensagem) {
   }
   const clienteNome = p.cliente_nome || p.venda_cliente || "";
   const pdfBuffer = await buildReciboPdf(p, comp, baseUrl);
+  const subjectText = p.pago ? `Recibo de Pagamento - ${clienteNome}` : `Demonstrativo de Parcela em Aberto - ${clienteNome}`;
   await transporter.sendMail({
     from, to: p.cliente_email,
-    subject: `Recibo de Pagamento - ${clienteNome}`,
+    subject: subjectText,
     text: textMessage, html: htmlMessage,
     attachments: [{
       filename: `recibo-${clienteNome.replace(/[^\w-]+/g, "_") || "cliente"}.pdf`,
@@ -367,7 +448,7 @@ async function sendWhatsAppDireto(numero, mensagem) {
   return res.json();
 }
 
-async function sendEmailDireto(emailTo, assunto, mensagem) {
+async function sendEmailDireto(emailTo, assunto, mensagem, htmlCustom) {
   const { rows } = await db.query("SELECT * FROM smtp_settings LIMIT 1");
   const smtp = rows[0];
   if (!smtp || !smtp.host || !smtp.username || !smtp.password) throw new Error("SMTP não configurado");
@@ -377,7 +458,8 @@ async function sendEmailDireto(emailTo, assunto, mensagem) {
     tls: smtp.use_tls ? undefined : { rejectUnauthorized: false },
   });
   const from = smtp.from_name ? `${smtp.from_name} <${smtp.from_email}>` : smtp.from_email;
-  await transporter.sendMail({ from, to: emailTo, subject: assunto, text: mensagem, html: mensagem.replace(/\n/g, "<br>") });
+  const html = htmlCustom || mensagem.replace(/\n/g, "<br>").replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
+  await transporter.sendMail({ from, to: emailTo, subject: assunto, text: mensagem, html });
   return { success: true };
 }
 

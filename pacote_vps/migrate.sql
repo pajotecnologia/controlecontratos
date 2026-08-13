@@ -141,7 +141,7 @@ ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS assinatura_imagem text DEF
 -- FIM DA MIGRAÇÃO
 -- ----------------------------------------------------------------------------
 SELECT 'Migração aplicada com sucesso!' AS resultado;
-CREATE TABLE IF NOT EXISTS agendamentos_envio (
+CREATE TABLE IF NOT EXISTS agendamento_mensagens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   data_agendamento TIMESTAMP WITH TIME ZONE NOT NULL,
   canal VARCHAR(50) NOT NULL,

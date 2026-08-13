@@ -52,7 +52,7 @@ const Relatorios = () => {
   useEffect(() => {
     supabase.from("clientes").select("id, nome").order("nome").then(({ data }: any) => setClientes(data || []));
     supabase.from("vendedores").select("id, nome").order("nome").then(({ data }: any) => setVendedores(data || []));
-    supabase.from("company_settings").select("*").limit(1).maybeSingle().then(({ data }: any) => setCompany(data || null));
+    supabase.from("company_settings").select("*").order("is_default", { ascending: false }).limit(1).maybeSingle().then(({ data }: any) => setCompany(data || null));
     gerar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

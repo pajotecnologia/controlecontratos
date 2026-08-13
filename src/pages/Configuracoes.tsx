@@ -8,12 +8,41 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 import { maskCEP, maskCNPJ, maskCPF } from "@/lib/masks";
-import { Eraser, Plus, Pencil, Trash2, MessageSquare, Mail, CreditCard, Copy } from "lucide-react";
+import { Eraser, Plus, Pencil, Trash2, MessageSquare, Mail, CreditCard, Copy, Building2, CheckCircle2, Star } from "lucide-react";
+
+type Company = {
+  id: string;
+  name: string;
+  cnpj?: string;
+  cep?: string;
+  endereco?: string;
+  bairro?: string;
+  cidade?: string;
+  email?: string;
+  telefone?: string;
+  nome_responsavel?: string;
+  cargo_responsavel?: string;
+  cpf_responsavel?: string;
+  logo_url?: string;
+  assinatura_imagem?: string;
+  public_url?: string;
+  is_default?: boolean;
+};
 
 const Configuracoes = () => {
-  // Company
+  // Multi-Company
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [isDefault, setIsDefault] = useState(false);
+
+  // Form Company
   const [companyName, setCompanyName] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [cep, setCep] = useState("");
@@ -30,6 +59,7 @@ const Configuracoes = () => {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [assinaturaEmpresa, setAssinaturaEmpresa] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
+  const [savingCompany, setSavingCompany] = useState(false);
 
   // Canvas assinatura empresa
   const canvasEmpresaRef = useRef<HTMLCanvasElement>(null);
@@ -143,32 +173,79 @@ const Configuracoes = () => {
   const [testingSmtp, setTestingSmtp] = useState(false);
 
   useEffect(() => {
-    loadCompany();
+    loadCompanies();
     loadEvolution();
     loadSmtp();
     loadAsaas();
     loadMsgTemplates();
   }, []);
 
-  const loadCompany = async () => {
-    const { data } = await supabase.from("company_settings").select("*").limit(1).maybeSingle();
-    if (data) {
-      setCompanyId(data.id);
-      setCompanyName(data.name);
-      setCnpj(data.cnpj || "");
-      setCep((data as any).cep || "");
-      setEndereco((data as any).endereco || "");
-      setBairro((data as any).bairro || "");
-      setCidade((data as any).cidade || "");
-      setCompanyEmail((data as any).email || "");
-      setCompanyTelefone((data as any).telefone || "");
-      setNomeResponsavel((data as any).nome_responsavel || "");
-      setCargoResponsavel((data as any).cargo_responsavel || "");
-      setCpfResponsavel((data as any).cpf_responsavel || "");
-      setLogoUrl(data.logo_url || "");
-      setAssinaturaEmpresa((data as any).assinatura_imagem || "");
-      setPublicUrl((data as any).public_url || "");
-    }
+  const loadCompanies = async () => {
+    const { data } = await supabase.from("company_settings").select("*").order("created_at", { ascending: true });
+    setCompanies((data as any) || []);
+  };
+
+  const openNewCompanyModal = () => {
+    setEditingCompany(null);
+    setCompanyId(null);
+    setCompanyName("");
+    setCnpj("");
+    setCep("");
+    setEndereco("");
+    setBairro("");
+    setCidade("");
+    setCompanyEmail("");
+    setCompanyTelefone("");
+    setNomeResponsavel("");
+    setCargoResponsavel("");
+    setCpfResponsavel("");
+    setLogoFile(null);
+    setLogoUrl("");
+    setAssinaturaEmpresa("");
+    setPublicUrl("");
+    setIsDefault(companies.length === 0);
+    setTemAssinaturaEmpresa(false);
+    limparAssinaturaEmpresa();
+    setCompanyDialogOpen(true);
+  };
+
+  const openEditCompanyModal = (comp: Company) => {
+    setEditingCompany(comp);
+    setCompanyId(comp.id);
+    setCompanyName(comp.name || "");
+    setCnpj(comp.cnpj || "");
+    setCep(comp.cep || "");
+    setEndereco(comp.endereco || "");
+    setBairro(comp.bairro || "");
+    setCidade(comp.cidade || "");
+    setCompanyEmail(comp.email || "");
+    setCompanyTelefone(comp.telefone || "");
+    setNomeResponsavel(comp.nome_responsavel || "");
+    setCargoResponsavel(comp.cargo_responsavel || "");
+    setCpfResponsavel(comp.cpf_responsavel || "");
+    setLogoFile(null);
+    setLogoUrl(comp.logo_url || "");
+    setAssinaturaEmpresa(comp.assinatura_imagem || "");
+    setPublicUrl(comp.public_url || "");
+    setIsDefault(!!comp.is_default);
+    setTemAssinaturaEmpresa(!!comp.assinatura_imagem);
+    setCompanyDialogOpen(true);
+  };
+
+  const deleteCompany = async (id: string) => {
+    if (!window.confirm("Deseja realmente excluir esta empresa?")) return;
+    const { error } = await supabase.from("company_settings").delete().eq("id", id);
+    if (error) return toast({ title: "Erro ao excluir empresa", description: error.message, variant: "destructive" });
+    toast({ title: "Empresa excluída com sucesso!" });
+    loadCompanies();
+  };
+
+  const setDefaultCompany = async (id: string) => {
+    await supabase.from("company_settings").update({ is_default: false }).neq("id", id);
+    await supabase.from("company_settings").update({ is_default: true }).eq("id", id);
+    toast({ title: "Empresa definida como padrão!" });
+    loadCompanies();
+    window.dispatchEvent(new Event("company_updated"));
   };
 
   const loadEvolution = async () => {
@@ -292,39 +369,62 @@ const Configuracoes = () => {
   };
 
   const saveCompany = async () => {
-    let uploadedUrl = logoUrl;
-
-    if (logoFile) {
-      const { url, error: uploadError } = await uploadLogo(logoFile);
-      if (uploadError || !url) return toast({ title: "Erro no upload", description: uploadError || "Falha", variant: "destructive" });
-      uploadedUrl = url;
+    if (!companyName.trim()) {
+      return toast({ title: "O Nome da Empresa é obrigatório", variant: "destructive" });
     }
 
-    const payload = {
-      name: companyName,
-      cnpj,
-      cep,
-      endereco,
-      bairro,
-      cidade,
-      email: companyEmail,
-      telefone: companyTelefone,
-      nome_responsavel: nomeResponsavel,
-      cargo_responsavel: cargoResponsavel,
-      cpf_responsavel: cpfResponsavel,
-      logo_url: uploadedUrl,
-      assinatura_imagem: assinaturaEmpresa || null,
-      public_url: publicUrl.trim() || null,
-    };
+    setSavingCompany(true);
+    try {
+      let uploadedUrl = logoUrl;
+      if (logoFile) {
+        const { url, error: uploadError } = await uploadLogo(logoFile);
+        if (uploadError || !url) {
+          setSavingCompany(false);
+          return toast({ title: "Erro no upload da logomarca", description: uploadError || "Falha ao enviar arquivo", variant: "destructive" });
+        }
+        uploadedUrl = url;
+      }
 
-    if (companyId) {
-      await supabase.from("company_settings").update(payload).eq("id", companyId);
-    } else {
-      const { data } = await supabase.from("company_settings").insert(payload).select().single();
-      if (data) setCompanyId(data.id);
+      if (isDefault) {
+        await supabase.from("company_settings").update({ is_default: false }).neq("id", "00000000-0000-0000-0000-000000000000");
+      }
+
+      const payload = {
+        name: companyName.trim(),
+        cnpj: cnpj.trim(),
+        cep: cep.trim(),
+        endereco: endereco.trim(),
+        bairro: bairro.trim(),
+        cidade: cidade.trim(),
+        email: companyEmail.trim(),
+        telefone: companyTelefone.trim(),
+        nome_responsavel: nomeResponsavel.trim(),
+        cargo_responsavel: cargoResponsavel.trim(),
+        cpf_responsavel: cpfResponsavel.trim(),
+        logo_url: uploadedUrl,
+        assinatura_imagem: assinaturaEmpresa || null,
+        public_url: publicUrl.trim() || null,
+        is_default: isDefault,
+      };
+
+      if (editingCompany) {
+        const { error } = await supabase.from("company_settings").update(payload).eq("id", editingCompany.id);
+        if (error) throw error;
+        toast({ title: "Empresa atualizada!" });
+      } else {
+        const { error } = await supabase.from("company_settings").insert(payload);
+        if (error) throw error;
+        toast({ title: "Empresa cadastrada com sucesso!" });
+      }
+
+      setCompanyDialogOpen(false);
+      loadCompanies();
+      window.dispatchEvent(new Event("company_updated"));
+    } catch (e: any) {
+      toast({ title: "Erro ao salvar empresa", description: e.message || "Falha naoperação", variant: "destructive" });
+    } finally {
+      setSavingCompany(false);
     }
-    setLogoUrl(uploadedUrl);
-    toast({ title: "Empresa salva!" });
   };
 
   const saveEvolution = async () => {
@@ -409,102 +509,213 @@ const Configuracoes = () => {
 
         <TabsContent value="empresa">
           <Card>
-            <CardHeader><CardTitle>Dados da Empresa</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome da Empresa</Label>
-                  <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>CNPJ</Label>
-                  <Input value={cnpj} onChange={(e) => setCnpj(maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" />
-                </div>
-                <div className="space-y-2">
-                  <Label>CEP</Label>
-                  <Input value={cep} onChange={(e) => setCep(maskCEP(e.target.value))} placeholder="00000-000" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Endereço</Label>
-                  <Input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número e complemento" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Bairro</Label>
-                  <Input value={bairro} onChange={(e) => setBairro(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input value={cidade} onChange={(e) => setCidade(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email da Empresa</Label>
-                  <Input type="email" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} placeholder="contato@suaempresa.com" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Telefone da Empresa</Label>
-                  <Input value={companyTelefone} onChange={(e) => setCompanyTelefone(e.target.value)} placeholder="(11) 99999-9999" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Nome do Responsável</Label>
-                  <Input value={nomeResponsavel} onChange={(e) => setNomeResponsavel(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cargo do Responsável</Label>
-                  <Input value={cargoResponsavel} onChange={(e) => setCargoResponsavel(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>CPF do Responsável</Label>
-                  <Input value={cpfResponsavel} onChange={(e) => setCpfResponsavel(maskCPF(e.target.value))} placeholder="000.000.000-00" />
-                </div>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-primary" /> Empresas Cadastradas
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Gerencie as empresas emissoras de contratos e propostas comerciais.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Logomarca</Label>
-                {logoUrl && <img src={logoUrl} alt="Logo" className="h-16 w-16 rounded object-contain border" />}
-                <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
+              <Button onClick={openNewCompanyModal}>
+                <Plus className="h-4 w-4 mr-2" /> Nova Empresa
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>CNPJ</TableHead>
+                      <TableHead>Cidade</TableHead>
+                      <TableHead>Contato</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {companies.map((comp) => (
+                      <TableRow key={comp.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            {comp.logo_url ? (
+                              <img src={comp.logo_url} alt="Logo" className="h-10 w-10 rounded object-contain border bg-white" />
+                            ) : (
+                              <div className="h-10 w-10 rounded bg-slate-100 border flex items-center justify-center text-slate-600 font-bold text-sm">
+                                {comp.name ? comp.name.substring(0, 2).toUpperCase() : "EM"}
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-semibold text-slate-900">{comp.name || "Sem Nome"}</div>
+                              {comp.nome_responsavel && (
+                                <div className="text-xs text-muted-foreground">Resp: {comp.nome_responsavel}</div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{comp.cnpj || "-"}</TableCell>
+                        <TableCell className="text-xs">{comp.cidade || "-"}</TableCell>
+                        <TableCell className="text-xs space-y-0.5">
+                          {comp.email && <div>{comp.email}</div>}
+                          {comp.telefone && <div className="text-muted-foreground">{comp.telefone}</div>}
+                          {!comp.email && !comp.telefone && "-"}
+                        </TableCell>
+                        <TableCell>
+                          {comp.is_default ? (
+                            <Badge className="bg-emerald-600 text-white"><CheckCircle2 className="h-3 w-3 mr-1" /> Padrão</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-slate-500">Secundária</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {!comp.is_default && (
+                              <Button variant="ghost" size="sm" onClick={() => setDefaultCompany(comp.id)} title="Definir como Padrão" className="text-amber-600 hover:text-amber-700">
+                                <Star className="h-4 w-4 mr-1 fill-amber-400 text-amber-500" /> Padrão
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" onClick={() => openEditCompanyModal(comp)} title="Editar">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteCompany(comp.id)} className="text-destructive hover:text-destructive" title="Excluir">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {companies.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          Nenhuma empresa cadastrada. Clique no botão "Nova Empresa" acima.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-              <div className="space-y-2">
-                <Label>URL Pública do Sistema</Label>
-                <p className="text-xs text-muted-foreground">Endereço acessível externamente — usado no link de assinatura enviado ao cliente. Ex: <span className="font-mono">https://meudominio.com.br</span></p>
-                <Input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="https://meudominio.com.br" />
-              </div>
-              <div className="space-y-2">
-                <Label>Assinatura Digital da Empresa</Label>
-                <p className="text-xs text-muted-foreground">Usada automaticamente no rodapé dos contratos assinados.</p>
-                {assinaturaEmpresa && !temAssinaturaEmpresa && (
-                  <div className="space-y-1">
-                    <img src={assinaturaEmpresa} alt="Assinatura atual" className="max-h-16 border rounded bg-white p-2" />
-                    <p className="text-xs text-muted-foreground">Assinatura atual — desenhe abaixo para substituir.</p>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Desenhe a assinatura no campo abaixo</span>
-                  <Button variant="ghost" size="sm" onClick={limparAssinaturaEmpresa} className="text-xs">
-                    <Eraser className="h-3 w-3 mr-1" /> Limpar
-                  </Button>
-                </div>
-                <div className="rounded-md border bg-slate-50 overflow-hidden max-w-2xl" style={{ touchAction: "none" }}>
-                  <canvas
-                    ref={canvasEmpresaRef}
-                    width={680}
-                    height={160}
-                    className="w-full cursor-crosshair"
-                    style={{ display: "block" }}
-                    onMouseDown={startDraw}
-                    onMouseMove={draw}
-                    onMouseUp={(e) => { stopDraw(); if (temAssinaturaEmpresa) capturarAssinatura(); }}
-                    onMouseLeave={(e) => { stopDraw(); if (temAssinaturaEmpresa) capturarAssinatura(); }}
-                    onTouchStart={startDraw}
-                    onTouchMove={draw}
-                    onTouchEnd={(e) => { stopDraw(); capturarAssinatura(); }}
-                  />
-                </div>
-                {!temAssinaturaEmpresa && !assinaturaEmpresa && (
-                  <p className="text-xs text-muted-foreground text-center">Clique e arraste para assinar</p>
-                )}
-              </div>
-              <Button onClick={saveCompany}>Salvar</Button>
             </CardContent>
           </Card>
+
+          {/* Modal de Cadastro / Edição de Empresa */}
+          <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingCompany ? "Editar Empresa" : "Cadastrar Nova Empresa"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="flex items-center space-x-2 pb-2 border-b">
+                  <Checkbox id="isDefault" checked={isDefault} onCheckedChange={(c) => setIsDefault(!!c)} />
+                  <Label htmlFor="isDefault" className="font-semibold cursor-pointer">
+                    Definir esta empresa como Empresa Padrão do sistema
+                  </Label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nome da Empresa <span className="text-destructive">*</span></Label>
+                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Ex.: Minha Empresa Ltda" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CNPJ</Label>
+                    <Input value={cnpj} onChange={(e) => setCnpj(maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CEP</Label>
+                    <Input value={cep} onChange={(e) => setCep(maskCEP(e.target.value))} placeholder="00000-000" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Endereço</Label>
+                    <Input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número e complemento" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bairro</Label>
+                    <Input value={bairro} onChange={(e) => setBairro(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cidade</Label>
+                    <Input value={cidade} onChange={(e) => setCidade(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email da Empresa</Label>
+                    <Input type="email" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} placeholder="contato@suaempresa.com" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Telefone da Empresa</Label>
+                    <Input value={companyTelefone} onChange={(e) => setCompanyTelefone(e.target.value)} placeholder="(11) 99999-9999" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nome do Responsável</Label>
+                    <Input value={nomeResponsavel} onChange={(e) => setNomeResponsavel(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cargo do Responsável</Label>
+                    <Input value={cargoResponsavel} onChange={(e) => setCargoResponsavel(e.target.value)} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>CPF do Responsável</Label>
+                    <Input value={cpfResponsavel} onChange={(e) => setCpfResponsavel(maskCPF(e.target.value))} placeholder="000.000.000-00" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Logomarca</Label>
+                  {logoUrl && <img src={logoUrl} alt="Logo" className="h-16 w-16 rounded object-contain border bg-white p-1" />}
+                  <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>URL Pública do Sistema</Label>
+                  <p className="text-xs text-muted-foreground">Endereço acessível externamente — usado no link de assinatura enviado ao cliente.</p>
+                  <Input value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="https://meudominio.com.br" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Assinatura Digital da Empresa</Label>
+                  <p className="text-xs text-muted-foreground">Usada automaticamente no rodapé dos contratos assinados.</p>
+                  {assinaturaEmpresa && !temAssinaturaEmpresa && (
+                    <div className="space-y-1">
+                      <img src={assinaturaEmpresa} alt="Assinatura atual" className="max-h-16 border rounded bg-white p-2" />
+                      <p className="text-xs text-muted-foreground">Assinatura atual — desenhe abaixo para substituir.</p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Desenhe a assinatura no campo abaixo</span>
+                    <Button variant="ghost" size="sm" onClick={limparAssinaturaEmpresa} className="text-xs">
+                      <Eraser className="h-3 w-3 mr-1" /> Limpar
+                    </Button>
+                  </div>
+                  <div className="rounded-md border bg-slate-50 overflow-hidden max-w-2xl" style={{ touchAction: "none" }}>
+                    <canvas
+                      ref={canvasEmpresaRef}
+                      width={680}
+                      height={160}
+                      className="w-full cursor-crosshair"
+                      style={{ display: "block" }}
+                      onMouseDown={startDraw}
+                      onMouseMove={draw}
+                      onMouseUp={(e) => { stopDraw(); if (temAssinaturaEmpresa) capturarAssinatura(); }}
+                      onMouseLeave={(e) => { stopDraw(); if (temAssinaturaEmpresa) capturarAssinatura(); }}
+                      onTouchStart={startDraw}
+                      onTouchMove={draw}
+                      onTouchEnd={(e) => { stopDraw(); capturarAssinatura(); }}
+                    />
+                  </div>
+                  {!temAssinaturaEmpresa && !assinaturaEmpresa && (
+                    <p className="text-xs text-muted-foreground text-center">Clique e arraste para assinar</p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCompanyDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={saveCompany} disabled={savingCompany}>
+                  {savingCompany ? "Salvando..." : "Salvar Empresa"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="smtp">

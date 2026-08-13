@@ -22,10 +22,11 @@ export function AppSidebar() {
   const [companyName, setCompanyName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
-  useEffect(() => {
+  const loadCompany = () => {
     supabase
       .from("company_settings")
       .select("name, logo_url")
+      .order("is_default", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
@@ -34,6 +35,12 @@ export function AppSidebar() {
           setLogoUrl(data.logo_url || "");
         }
       });
+  };
+
+  useEffect(() => {
+    loadCompany();
+    window.addEventListener("company_updated", loadCompany);
+    return () => window.removeEventListener("company_updated", loadCompany);
   }, []);
 
   const adminItems = [

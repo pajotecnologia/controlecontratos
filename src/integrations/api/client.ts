@@ -39,7 +39,7 @@ async function api(path: string, body?: any, opts: { form?: FormData; method?: s
     headers["Content-Type"] = "application/json";
     fetchBody = JSON.stringify(body);
   }
-  const method = opts.method || (body !== undefined ? "POST" : "GET");
+  const method = opts.method || (opts.form !== undefined || body !== undefined ? "POST" : "GET");
   const res = await fetch(`${API_URL}${path}`, { method, headers, body: fetchBody });
   const json = await res.json().catch(() => ({}));
   return { ok: res.ok, json };
@@ -69,6 +69,7 @@ class QueryBuilder {
   update(values: any) { this.action = "update"; this._values = values; return this; }
   delete() { this.action = "delete"; return this; }
   eq(column: string, value: any) { this._filters.push({ column, op: "eq", value }); return this; }
+  neq(column: string, value: any) { this._filters.push({ column, op: "neq", value }); return this; }
   in(column: string, value: any[]) { this._filters.push({ column, op: "in", value }); return this; }
   order(column: string, opts: { ascending?: boolean } = {}) {
     this._order = { column, ascending: opts.ascending !== false };
@@ -164,7 +165,7 @@ export const supabase = {
 export async function uploadArquivo(file: File): Promise<{ url: string | null; error: string | null }> {
   const form = new FormData();
   form.append("file", file);
-  const { ok, json } = await api("/upload", undefined, { form });
+  const { ok, json } = await api("/upload", undefined, { form, method: "POST" });
   if (!ok) return { url: null, error: json.error || "Falha no upload" };
   return { url: json.url, error: null };
 }

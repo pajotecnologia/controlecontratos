@@ -77,61 +77,107 @@ const buildReciboHtml = (contrato: any, parcela: any, company: any) => {
   const dataVenc = parcela.data_vencimento
     ? format(new Date(parcela.data_vencimento + "T12:00:00"), "dd/MM/yyyy")
     : "-";
-  const nomeCliente = contrato.clientes?.nome || contrato.cliente || "-";
+  const cli = contrato.clientes || {};
+  const nomeCliente = cli.nome || contrato.cliente || "-";
   const valorFmt = Number(parcela.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  const isPago = Boolean(parcela.pago);
 
   return `
-    <div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6;padding:10px;max-width:800px;margin:0 auto;">
-      <!-- Cabeçalho -->
-      <div style="text-align:center;border-bottom:2px solid #334155;padding-bottom:12px;margin-bottom:20px;">
+    <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; padding: 10px; max-width: 800px; margin: 0 auto;">
+      <!-- Cabeçalho idêntico à Proposta Comercial -->
+      <div style="text-align: center; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
         ${logoHtml}
-        <div style="font-size:18px;font-weight:bold;">${comp.name || "Empresa"}</div>
-        ${comp.cnpj ? `<div style="font-size:12px;color:#64748b;">CNPJ: ${comp.cnpj}${compEndereco ? " | " + compEndereco : ""}</div>` : ""}
-        ${compContato ? `<div style="font-size:12px;color:#64748b;">${compContato}</div>` : ""}
+        <div style="font-size: 18px; font-weight: bold; color: #0f172a;">${comp.name || "Sua Empresa"}</div>
+        <div style="font-size: 12px; color: #64748b;">
+          ${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` | ${compEndereco}` : ""}
+        </div>
+        ${compContato ? `<div style="font-size: 12px; color: #64748b;">${compContato}</div>` : ""}
       </div>
 
       <!-- Título -->
-      <div style="text-align:center;margin-bottom:24px;">
-        <h1 style="font-size:22px;margin:0 0 4px 0;font-weight:bold;color:#0f172a;">RECIBO DE PAGAMENTO</h1>
-        <div style="font-size:13px;color:#64748b;">Parcela ${parcela.numero_parcela} de ${contrato.qtde_parcelas || 1}${parcela.mes_referencia ? " — " + parcela.mes_referencia : ""}</div>
-        <div style="font-size:12px;color:#64748b;">Emitido em ${dataEmissao}</div>
+      <div style="text-align: center; margin-bottom: 25px;">
+        <h1 style="font-size: 22px; margin: 0 0 5px 0; font-weight: bold; color: #0f172a;">
+          ${isPago ? "RECIBO DE PAGAMENTO" : "DEMONSTRATIVO DE PARCELA (EM ABERTO)"}
+        </h1>
+        <div style="font-size: 13px; color: #64748b;">
+          Parcela ${parcela.numero_parcela} de ${contrato.qtde_parcelas || 1}${parcela.mes_referencia ? ` — ${parcela.mes_referencia}` : ""}
+        </div>
+        <div style="font-size: 12px; color: #64748b;">Emitido em ${dataEmissao}</div>
       </div>
 
       <!-- Dados do Cliente -->
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px;margin-bottom:20px;font-size:13px;">
-        <div style="font-weight:bold;font-size:14px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:8px;color:#0f172a;">DADOS DO CLIENTE</div>
-        <div><strong>Cliente:</strong> ${nomeCliente}</div>
-      </div>
-
-      <!-- Dados do Pagamento -->
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px;margin-bottom:28px;font-size:13px;">
-        <div style="font-weight:bold;font-size:14px;border-bottom:1px solid #bbf7d0;padding-bottom:5px;margin-bottom:10px;color:#14532d;">DADOS DO PAGAMENTO</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-          <div><strong>Valor da Parcela:</strong> R$ ${valorFmt}</div>
-          <div><strong>Data de Vencimento:</strong> ${dataVenc}</div>
-          <div><strong>Data de Pagamento:</strong> ${dataPag}</div>
-          ${parcela.numero_nf ? `<div><strong>Nota Fiscal Nº:</strong> ${parcela.numero_nf}</div>` : ""}
-          ${parcela.observacao ? `<div style="grid-column:span 2"><strong>Observação:</strong> ${parcela.observacao}</div>` : ""}
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 13px;">
+        <div style="font-weight: bold; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px; color: #0f172a;">DADOS DO CLIENTE</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <div><strong>Cliente:</strong> ${nomeCliente}</div>
+          <div><strong>CPF/CNPJ:</strong> ${cli.cpf_cnpj || "-"}</div>
+          <div><strong>Endereço:</strong> ${cli.endereco || "-"}</div>
+          <div><strong>Telefone:</strong> ${cli.telefone || "-"}</div>
+          <div><strong>E-mail:</strong> ${cli.email || "-"}</div>
+          <div><strong>Status da Parcela:</strong> ${isPago ? "<span style='color:#16a34a;font-weight:bold;'>QUITADA</span>" : "<span style='color:#d97706;font-weight:bold;'>EM ABERTO</span>"}</div>
         </div>
       </div>
 
+      <!-- Tabela de Lançamento -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px;">
+        <thead>
+          <tr style="background-color: #f1f5f9;">
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-weight: bold;">Descrição do Contrato / Lançamento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 90px;">Parcela</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 110px;">Vencimento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 120px;">Pagamento</th>
+            <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border: 1px solid #cbd5e1; padding: 10px;">
+              Contrato: ${contrato.cliente || "Serviço Prestado"}${parcela.mes_referencia ? ` (${parcela.mes_referencia})` : ""}
+            </td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${parcela.numero_parcela}ª / ${contrato.qtde_parcelas || 1}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${dataVenc}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${isPago ? (dataPag !== "-" ? dataPag : "Quitada") : "Em aberto"}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right;">R$ ${valorFmt}</td>
+          </tr>
+          <tr style="font-weight: bold; background-color: #f8fafc;">
+            <td colspan="4" style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px;">VALOR TOTAL DA PARCELA:</td>
+            <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px; color: #0f172a;">R$ ${valorFmt}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Observações / Detalhes de Pagamento -->
+      ${(parcela.numero_nf || parcela.observacao || parcela.asaas_pix_copy_paste) ? `
+      <div style="margin-bottom: 25px; font-size: 13px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px;">
+        <div style="font-weight: bold; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px; color: #0f172a;">OBSERVAÇÕES E INFORMAÇÕES DE PAGAMENTO</div>
+        ${parcela.numero_nf ? `<div style="margin-bottom:4px;"><strong>Nota Fiscal Nº:</strong> ${parcela.numero_nf}</div>` : ""}
+        ${parcela.observacao ? `<div style="white-space: pre-wrap; color: #334155; margin-bottom:4px;"><strong>Observação:</strong> ${parcela.observacao}</div>` : ""}
+        ${parcela.asaas_pix_copy_paste ? `<div style="margin-top:6px; background:#fff; border:1px dashed #cbd5e1; padding:8px; border-radius:4px;"><strong>Chave PIX Copia e Cola:</strong><br/><code style="font-size:11px; word-break:break-all;">${parcela.asaas_pix_copy_paste}</code></div>` : ""}
+      </div>
+      ` : ""}
+
       <!-- Declaração -->
-      <div style="text-align:center;font-size:13px;color:#475569;margin-bottom:50px;">
-        Declaramos para os devidos fins que recebemos de <strong>${nomeCliente}</strong> a importância de
-        <strong>R$ ${valorFmt}</strong> referente à parcela ${parcela.numero_parcela}${parcela.mes_referencia ? " (" + parcela.mes_referencia + ")" : ""}.
+      <div style="text-align: center; font-size: 13px; color: #475569; margin-bottom: 40px;">
+        ${isPago
+          ? `Declaramos para os devidos fins que recebemos de <strong>${nomeCliente}</strong> a importância de <strong>R$ ${valorFmt}</strong> referente à quitação da parcela ${parcela.numero_parcela}${parcela.mes_referencia ? ` (${parcela.mes_referencia})` : ""}.`
+          : `Demonstrativo de cobrança referente à parcela ${parcela.numero_parcela}${parcela.mes_referencia ? ` (${parcela.mes_referencia})` : ""} no valor de <strong>R$ ${valorFmt}</strong> com vencimento em <strong>${dataVenc}</strong>.`
+        }
       </div>
 
       <!-- Assinatura -->
-      <div style="display:flex;justify-content:space-around;margin-top:40px;text-align:center;font-size:13px;">
-        <div style="width:250px;">
-          <div style="border-top:1px solid #94a3b8;margin-bottom:5px;"></div>
+      <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center; font-size: 13px;">
+        <div style="width: 250px;">
+          ${comp.assinatura_imagem
+            ? `<img src="${comp.assinatura_imagem}" style="max-height:60px;display:block;margin:0 auto 5px;" />`
+            : `<div style="border-top: 1px solid #94a3b8; margin-bottom: 5px;"></div>`
+          }
           <strong>${comp.name || "Assinatura da Empresa"}</strong>
-          ${comp.nome_responsavel ? `<div style="font-size:11px;color:#64748b;">${comp.nome_responsavel}</div>` : ""}
+          ${comp.nome_responsavel ? `<div style="font-size: 11px; color: #64748b;">${comp.nome_responsavel}</div>` : ""}
         </div>
-        <div style="width:250px;">
-          <div style="border-top:1px solid #94a3b8;margin-bottom:5px;"></div>
+        <div style="width: 250px;">
+          <div style="border-top: 1px solid #94a3b8; margin-bottom: 5px;"></div>
           <strong>${nomeCliente}</strong>
-          <div style="font-size:11px;color:#64748b;">Assinatura do Cliente</div>
+          <div style="font-size: 11px; color: #64748b;">Assinatura do Cliente</div>
         </div>
       </div>
     </div>
@@ -393,7 +439,7 @@ const Financeiro = () => {
   };
 
   const loadCompany = async () => {
-    const { data } = await supabase.from("company_settings").select("*").limit(1).maybeSingle();
+    const { data } = await supabase.from("company_settings").select("*").order("is_default", { ascending: false }).limit(1).maybeSingle();
     setCompany(data || null);
     const templates = await getMessageTemplates();
     setMsgTemplates(templates || []);
@@ -1218,7 +1264,7 @@ const Financeiro = () => {
                                 )}
                               </TooltipProvider>
                             )}
-                            {p.pago && p.id && (
+                            {p.id && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1232,7 +1278,7 @@ const Financeiro = () => {
                                       <MessageCircle className="h-3 w-3 text-green-600" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Enviar recibo por WhatsApp</TooltipContent>
+                                  <TooltipContent>{p.pago ? "Enviar recibo por WhatsApp" : "Enviar recibo/demonstrativo (em aberto) por WhatsApp"}</TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1246,7 +1292,7 @@ const Financeiro = () => {
                                       <Mail className="h-3 w-3 text-blue-600" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Enviar recibo por email</TooltipContent>
+                                  <TooltipContent>{p.pago ? "Enviar recibo por email" : "Enviar recibo/demonstrativo (em aberto) por email"}</TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1259,7 +1305,7 @@ const Financeiro = () => {
                                       <Printer className="h-3 w-3 text-gray-600" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Visualizar / Imprimir recibo</TooltipContent>
+                                  <TooltipContent>{p.pago ? "Visualizar / Imprimir recibo" : "Visualizar / Imprimir recibo (em aberto)"}</TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
                             )}
@@ -1572,7 +1618,7 @@ const Financeiro = () => {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
-              <DialogTitle>Recibo de Pagamento</DialogTitle>
+              <DialogTitle>Recibo / Demonstrativo da Parcela</DialogTitle>
               <Button
                 variant="outline"
                 size="sm"

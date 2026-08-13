@@ -37,19 +37,23 @@ type Proposta = {
   desconto: number | null;
   total: number | null;
   company_id: string | null;
+  modelo_proposta?: string | null;
   assinatura_status?: string;
   assinatura_token?: string;
   assinatura_link?: string;
   assinatura_nome?: string;
   assinatura_data?: string;
   assinatura_imagem?: string;
+  observacoes?: string | null;
   clientes?: { nome: string; cpf_cnpj?: string; endereco?: string; telefone?: string; email?: string };
+  company_settings?: any;
   proposta_itens?: PropostaItem[];
 };
 
 const Propostas = () => {
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [company, setCompany] = useState<any>(null);
 
   const [open, setOpen] = useState(false);
@@ -57,6 +61,8 @@ const Propostas = () => {
 
   // Campos do formulário
   const [clienteId, setClienteId] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [modeloProposta, setModeloProposta] = useState("classico");
   const [dataProposta, setDataProposta] = useState(new Date().toISOString().split("T")[0]);
   const [tipoProposta, setTipoProposta] = useState("");
   const [titulo, setTitulo] = useState("PROPOSTA COMERCIAL");
@@ -65,6 +71,7 @@ const Propostas = () => {
   const [descontoNum, setDescontoNum] = useState(0);
   const [totalManualDisplay, setTotalManualDisplay] = useState("");
   const [totalManualNum, setTotalManualNum] = useState(0);
+  const [observacoes, setObservacoes] = useState("");
 
   // Preview state
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -100,12 +107,20 @@ const Propostas = () => {
 
   const abrirEnvio = (p: Proposta, canal: "email" | "whatsapp") => {
     setSendDialog({ proposta: p, canal });
-    setSendTemplateId("");
-    setSendMensagem(defaultMensagem(p, canal));
+    
+    // Procura o primeiro template ativo para este canal
+    const activeTemplates = msgTemplates.filter((t) => (t.evento || "").toLowerCase().includes("proposta") && (canal === "email" ? t.ativo_email : t.ativo_whatsapp));
+    if (activeTemplates.length > 0) {
+      setSendTemplateId(activeTemplates[0].id);
+      setSendMensagem(activeTemplates[0].corpo);
+    } else {
+      setSendTemplateId("");
+      setSendMensagem(defaultMensagem(p, canal));
+    }
   };
 
   const templatesDoCanal = (canal: "email" | "whatsapp") =>
-    msgTemplates.filter((t) => t.evento === "proposta" && (canal === "email" ? t.ativo_email : t.ativo_whatsapp));
+    msgTemplates.filter((t) => (canal === "email" ? t.ativo_email : t.ativo_whatsapp));
 
   const handleConfirmarEnvio = async () => {
     if (!sendDialog) return;
@@ -205,22 +220,28 @@ const Propostas = () => {
   }, []);
 
   const load = async () => {
-    // Select propostas com join em clientes e proposta_itens
+    // Select propostas com join em clientes, company_settings e proposta_itens
     const { data } = await supabase
       .from("propostas")
-      .select("*, clientes(nome, cpf_cnpj, endereco, telefone, email), proposta_itens(*), assinatura_link")
+      .select("*, clientes(nome, cpf_cnpj, endereco, telefone, email), company_settings(*), proposta_itens(*), assinatura_link")
       .order("created_at", { ascending: false });
     setPropostas(data || []);
   };
 
   const loadDependencies = async () => {
-    const [resClientes, resCompany, resVendedores] = await Promise.all([
+    const [resClientes, resCompanies, resVendedores] = await Promise.all([
       supabase.from("clientes").select("id, nome").order("nome"),
-      supabase.from("company_settings").select("*").limit(1).maybeSingle(),
+      supabase.from("company_settings").select("*").order("created_at", { ascending: true }),
       supabase.from("vendedores").select("id, nome").eq("ativo", true).order("nome"),
     ]);
     setClientes(resClientes.data || []);
-    setCompany(resCompany.data || null);
+    const comps = resCompanies.data || [];
+    setCompanies(comps);
+    const defComp = comps.find((c: any) => c.is_default) || comps[0];
+    if (defComp) {
+      setCompany(defComp);
+      setCompanyId(defComp.id);
+    }
     setVendedores(resVendedores.data || []);
     const { data: templates } = await getMessageTemplates();
     setMsgTemplates(templates || []);
@@ -230,6 +251,9 @@ const Propostas = () => {
     setEditing(null);
     setClienteId("");
     setVendedorId("");
+    const defComp = companies.find((c: any) => c.is_default) || companies[0];
+    setCompanyId(defComp?.id || "");
+    setModeloProposta("classico");
     setDataProposta(new Date().toISOString().split("T")[0]);
     setTipoProposta("");
     setTitulo("PROPOSTA COMERCIAL");
@@ -238,6 +262,7 @@ const Propostas = () => {
     setDescontoNum(0);
     setTotalManualDisplay("");
     setTotalManualNum(0);
+    setObservacoes("");
   };
 
   const handleAddItem = () => {
@@ -331,12 +356,14 @@ const Propostas = () => {
     const payloadProposta = {
       cliente_id: clienteId,
       vendedor_id: vendedorId || null,
+      company_id: companyId || null,
+      modelo_proposta: modeloProposta || "classico",
       data_proposta: dataProposta,
       tipo_proposta: tipoProposta,
       titulo: titulo,
       desconto: descontoNum,
       total: totalFinal,
-      company_id: company?.id || null,
+      observacoes: observacoes,
     };
 
     try {
@@ -381,9 +408,12 @@ const Propostas = () => {
   const handleEdit = (p: Proposta) => {
     setEditing(p);
     setClienteId(p.cliente_id);
+    setCompanyId(p.company_id || "");
+    setModeloProposta((p as any).modelo_proposta || "classico");
     setDataProposta(p.data_proposta);
     setTipoProposta(p.tipo_proposta || "");
     setTitulo(p.titulo || "PROPOSTA COMERCIAL");
+    setObservacoes(p.observacoes || "");
 
     // Mapear itens para preencher form
     const itemData = (p.proposta_itens || []).map((item) => ({
@@ -418,16 +448,16 @@ const Propostas = () => {
 
   const buildPropostaHtml = (p: Proposta) => {
     const cli = p.clientes || {};
-    const comp = company || {};
+    const comp = (p as any).company_settings || companies.find(c => c.id === p.company_id) || companies.find(c => c.is_default) || companies[0] || company || {};
+    const modelo = (p as any).modelo_proposta || modeloProposta || "classico";
 
     let logoHtml = "";
     if (comp.logo_url) {
-      // Garantir url absoluta
       let logoSrc = comp.logo_url;
       if (logoSrc.startsWith("/")) {
         logoSrc = `${window.location.protocol}//${window.location.host}${logoSrc}`;
       }
-      logoHtml = `<img src="${logoSrc}" alt="Logo" style="max-height: 80px; max-width: 200px; object-fit: contain; margin-bottom: 8px;" />`;
+      logoHtml = `<img src="${logoSrc}" alt="Logo" style="max-height: 80px; max-width: 220px; object-fit: contain;" />`;
     }
 
     const compEndereco = [comp.endereco, comp.bairro, comp.cidade, comp.cep ? `CEP: ${comp.cep}` : ""]
@@ -439,7 +469,246 @@ const Propostas = () => {
       .join(" | ");
 
     const cliEndereco = cli.endereco || "-";
+    const dataEmissaoFormatada = p.data_proposta
+      ? format(new Date(p.data_proposta + "T12:00:00"), "dd/MM/yyyy")
+      : "-";
+    const dataAssinaturaFormatada = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
 
+    const desc = Number(p.desconto || 0);
+    const totalGeral = (p.proposta_itens || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const finalTotal = Number(p.total || 0);
+
+    // =========================================================================
+    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
+    // =========================================================================
+    if (modelo === "moderno") {
+      const rowsHtmlModerno = (p.proposta_itens || [])
+        .map((item, idx) => {
+          let imgHtml = "";
+          if (item.imagem_url) {
+            let imgSrc = item.imagem_url;
+            if (imgSrc.startsWith("/")) imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
+            imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height: 80px; max-width: 130px; object-fit: contain; margin-top: 6px;" />`;
+          }
+          return `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 12px 4px; text-align: left;">
+              <span style="color: #64748b; margin-right: 6px;">${idx + 1}.</span>
+              <strong style="color: #0f172a;">${item.descricao}</strong>
+              ${imgHtml}
+            </td>
+            <td style="padding: 12px 4px; text-align: center; color: #475569;">${item.quantidade}</td>
+            <td style="padding: 12px 4px; text-align: right; color: #475569;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
+            <td style="padding: 12px 4px; text-align: right; font-weight: 700; color: #0f172a;">R$ ${formatCurrency(Number(item.total))}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
+      return `
+        <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #1e293b; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px;">
+          <!-- Top Header: Apenas Logomarca e Tipo/Título da Proposta (Sem molduras/bordas) -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px;">
+            <div>
+              ${logoHtml || `<div style="font-size: 22px; font-weight: 800; color: #0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb; font-weight: 800;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
+              <h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 4px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Data: ${dataEmissaoFormatada}</div>
+            </div>
+          </div>
+
+          <!-- Dados do Cliente (Sem borda ou fundo) -->
+          <div style="margin-bottom: 35px; font-size: 13px;">
+            <div style="font-weight: 800; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Informações do Cliente</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div><span style="color: #64748b;">Cliente:</span> <strong>${cli.nome || "-"}</strong></div>
+              <div><span style="color: #64748b;">CPF/CNPJ:</span> <strong>${cli.cpf_cnpj || "-"}</strong></div>
+              <div><span style="color: #64748b;">Telefone:</span> <strong>${cli.telefone || "-"}</strong></div>
+              <div><span style="color: #64748b;">E-mail:</span> <strong>${cli.email || "-"}</strong></div>
+              <div style="grid-column: span 2;"><span style="color: #64748b;">Endereço:</span> <strong>${cliAddressFormat(cliEndereco)}</strong></div>
+            </div>
+          </div>
+
+          <!-- Tabela sem bordas/molduras -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #0f172a; color: #0f172a;">
+                <th style="padding: 10px 4px; text-align: left; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Descrição</th>
+                <th style="padding: 10px 4px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 11px; width: 60px;">Qtd</th>
+                <th style="padding: 10px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 11px; width: 120px;">Unitário</th>
+                <th style="padding: 10px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 11px; width: 120px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtmlModerno}
+            </tbody>
+          </table>
+
+          <!-- Valor Total Limpo (Sem caixa/borda) -->
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 35px; text-align: right;">
+            <div>
+              ${desc > 0 ? `<div style="font-size: 12px; color: #dc2626; margin-bottom: 4px;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
+              <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Valor Total</div>
+              <div style="font-size: 24px; font-weight: 900; color: #0f172a;">R$ ${formatCurrency(finalTotal)}</div>
+            </div>
+          </div>
+
+          ${p.observacoes ? `
+          <div style="margin-bottom: 40px; font-size: 13px;">
+            <div style="font-weight: 800; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Observações</div>
+            <div style="white-space: pre-wrap; color: #475569; line-height: 1.5;">${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+          </div>
+          ` : ""}
+
+          <!-- Assinaturas Limpas (Sem caixas) -->
+          <div style="margin-top: 50px; font-size: 12px;">
+            <div style="display: flex; justify-content: space-around; text-align: center; margin-bottom: 50px;">
+              <div style="width: 250px;">
+                ${comp.assinatura_imagem
+                  ? `<img src="${comp.assinatura_imagem}" style="max-height:55px;display:block;margin:0 auto 4px;" />`
+                  : `<div style="border-top: 1px solid #94a3b8; margin-top: 40px; margin-bottom: 6px;"></div>`}
+                <strong style="color: #0f172a; display: block;">${comp.name || "Assinatura Empresa"}</strong>
+                <div style="font-size: 10px; color: #64748b;">${comp.nome_responsavel || ""}</div>
+              </div>
+              <div style="width: 250px;">
+                <div style="border-top: 1px solid #94a3b8; margin-top: 40px; margin-bottom: 6px;"></div>
+                <strong style="color: #0f172a; display: block;">${cli.nome || "Assinatura Cliente"}</strong>
+                <div style="font-size: 10px; color: #64748b;">Aceite do Cliente</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rodapé Completo com os Dados da Empresa -->
+          <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+            <div style="font-weight: 700; color: #0f172a; font-size: 12px; margin-bottom: 2px;">${comp.name || "Sua Empresa"}</div>
+            <div>${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}</div>
+            <div>${compContato}</div>
+            <div style="font-style: italic; margin-top: 4px; font-size: 10px;">Emitido em ${dataAssinaturaFormatada}.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // MODELO 3: ELEGANTE / EXECUTIVO (Georgia Serif, Linha Fina Ouro)
+    // =========================================================================
+    if (modelo === "elegante") {
+      const rowsHtmlElegante = (p.proposta_itens || [])
+        .map((item, idx) => {
+          let imgHtml = "";
+          if (item.imagem_url) {
+            let imgSrc = item.imagem_url;
+            if (imgSrc.startsWith("/")) imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
+            imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height: 80px; max-width: 130px; object-fit: contain; margin-top: 6px; border: 1px solid #d97706;" />`;
+          }
+          return `
+          <tr style="border-bottom: 1px solid #f3ebd8;">
+            <td style="padding: 10px 10px; text-align: left; font-family: Georgia, serif;">
+              <span style="color: #d97706; font-weight: bold; margin-right: 6px;">${idx + 1}.</span>
+              <span style="color: #0f172a; font-weight: 600;">${item.descricao}</span>
+              ${imgHtml}
+            </td>
+            <td style="padding: 10px 10px; text-align: center; color: #374151; font-family: Arial, sans-serif;">${item.quantidade}</td>
+            <td style="padding: 10px 10px; text-align: right; color: #4b5563; font-family: Arial, sans-serif;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
+            <td style="padding: 10px 10px; text-align: right; font-weight: bold; color: #92400e; font-family: Georgia, serif;">R$ ${formatCurrency(Number(item.total))}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
+      return `
+        <div style="font-family: Georgia, 'Times New Roman', serif; color: #1f2937; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 40px; border: 1px solid #e5e7eb; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+          <!-- Top Bar Ouro Fina -->
+          <div style="height: 3px; background: #d97706; margin-bottom: 28px;"></div>
+
+          <!-- Header Executivo Centralizado -->
+          <div style="text-align: center; border-bottom: 1px solid #f3ebd8; padding-bottom: 20px; margin-bottom: 28px;">
+            ${logoHtml ? `<div style="margin-bottom: 12px;">${logoHtml}</div>` : ""}
+            <div style="font-size: 22px; font-weight: bold; color: #0f172a; letter-spacing: 1px; text-transform: uppercase;">${comp.name || "Sua Empresa"}</div>
+            <div style="font-size: 12px; color: #6b7280; font-family: Arial, sans-serif; margin-top: 4px;">
+              ${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}
+            </div>
+            ${compContato ? `<div style="font-size: 12px; color: #6b7280; font-family: Arial, sans-serif; margin-top: 2px;">${compContato}</div>` : ""}
+          </div>
+
+          <!-- Título Proposta -->
+          <div style="text-align: center; margin-bottom: 28px;">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #d97706; font-weight: bold; font-family: Arial, sans-serif;">PROPOSTA COMERCIAL</div>
+            <h1 style="font-size: 22px; font-weight: normal; color: #0f172a; margin: 4px 0; font-style: italic;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+            <div style="font-size: 12px; color: #6b7280; font-family: Arial, sans-serif; margin-top: 2px;">Emissão: ${dataEmissaoFormatada}</div>
+          </div>
+
+          <!-- Dados do Cliente (Parchment Clean Box) -->
+          <div style="background-color: #fdfbf7; border: 1px solid #f3ebd8; padding: 18px; margin-bottom: 28px; border-radius: 4px;">
+            <div style="font-size: 11px; font-weight: bold; color: #92400e; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #f3ebd8; padding-bottom: 6px; margin-bottom: 10px; font-family: Arial, sans-serif;">DADOS DO CLIENTE</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; font-family: Arial, sans-serif;">
+              <div><strong style="color: #1e293b;">Cliente:</strong> ${cli.nome || "-"}</div>
+              <div><strong style="color: #1e293b;">CPF/CNPJ:</strong> ${cli.cpf_cnpj || "-"}</div>
+              <div><strong style="color: #1e293b;">Telefone:</strong> ${cli.telefone || "-"}</div>
+              <div><strong style="color: #1e293b;">E-mail:</strong> ${cli.email || "-"}</div>
+              <div style="grid-column: span 2;"><strong style="color: #1e293b;">Endereço:</strong> ${cliAddressFormat(cliEndereco)}</div>
+              ${p.tipo_proposta ? `<div><strong style="color: #1e293b;">Tipo:</strong> ${p.tipo_proposta}</div>` : ""}
+            </div>
+          </div>
+
+          <!-- Tabela Executiva Clean -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px; font-size: 13px;">
+            <thead>
+              <tr style="background-color: #0f172a; color: #ffffff; font-family: Arial, sans-serif;">
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Descrição do Serviço / Produto</th>
+                <th style="padding: 10px 12px; text-align: center; font-weight: 600; font-size: 11px; text-transform: uppercase; width: 60px;">Qtd</th>
+                <th style="padding: 10px 12px; text-align: right; font-weight: 600; font-size: 11px; text-transform: uppercase; width: 120px;">Unitário</th>
+                <th style="padding: 10px 12px; text-align: right; font-weight: 600; font-size: 11px; text-transform: uppercase; width: 120px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtmlElegante}
+            </tbody>
+          </table>
+
+          <!-- Totais com faixa executiva Onyx -->
+          <div style="background: #0f172a; color: #ffffff; padding: 14px 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; font-family: Arial, sans-serif;">
+            <div>
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Valor Total da Proposta</div>
+              ${desc > 0 ? `<div style="font-size: 12px; color: #f87171; margin-top: 2px;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
+            </div>
+            <div style="font-size: 22px; font-weight: bold; color: #f59e0b; font-family: Georgia, serif;">R$ ${formatCurrency(finalTotal)}</div>
+          </div>
+
+          ${p.observacoes ? `
+          <div style="border-left: 3px solid #d97706; padding: 14px 18px; background: #fdfbf7; margin-bottom: 32px; font-size: 13px; font-family: Arial, sans-serif;">
+            <div style="font-weight: bold; color: #92400e; margin-bottom: 4px; font-size: 12px; text-transform: uppercase;">Observações</div>
+            <div style="white-space: pre-wrap; color: #4b5563; line-height: 1.5;">${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+          </div>
+          ` : ""}
+
+          <!-- Assinatura Executiva -->
+          <div style="margin-top: 45px; font-family: Arial, sans-serif; font-size: 12px;">
+            <div style="text-align: center; color: #6b7280; margin-bottom: 35px; font-style: italic;">Documento emitido em ${dataAssinaturaFormatada}.</div>
+            <div style="display: flex; justify-content: space-around; text-align: center;">
+              <div style="width: 250px;">
+                ${comp.assinatura_imagem
+                  ? `<img src="${comp.assinatura_imagem}" style="max-height:55px;display:block;margin:0 auto 4px;" />`
+                  : `<div style="border-top: 1px solid #0f172a; margin-bottom: 6px;"></div>`}
+                <strong style="color: #0f172a; display: block;">${comp.name || "Assinatura da Empresa"}</strong>
+                <div style="font-size: 10px; color: #6b7280;">${comp.nome_responsavel || ""}</div>
+              </div>
+              <div style="width: 250px;">
+                <div style="border-top: 1px solid #0f172a; margin-bottom: 6px;"></div>
+                <strong style="color: #0f172a; display: block;">${cli.nome || "Assinatura do Cliente"}</strong>
+                <div style="font-size: 10px; color: #6b7280;">Aceite do Cliente</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // MODELO 1: CLÁSSICO / CORPORATIVO (Corporativo Slate Neutro Tradicional)
+    // =========================================================================
     const rowsHtml = (p.proposta_itens || [])
       .map((item, idx) => {
         let imgHtml = "";
@@ -452,27 +721,17 @@ const Propostas = () => {
         }
         return `
         <tr>
-          <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: left;">
+          <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: left;">
             <div><strong>${idx + 1}.</strong> ${item.descricao}</div>
             ${imgHtml}
           </td>
-          <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">${item.quantidade}</td>
-          <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
-          <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right;">R$ ${formatCurrency(Number(item.total))}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: center;">${item.quantidade}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right;">R$ ${formatCurrency(Number(item.total))}</td>
         </tr>
       `;
       })
       .join("");
-
-    const dataEmissaoFormatada = p.data_proposta
-      ? format(new Date(p.data_proposta + "T12:00:00"), "dd/MM/yyyy")
-      : "-";
-
-    const dataAssinaturaFormatada = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
-
-    const desc = Number(p.desconto || 0);
-    const totalGeral = (p.proposta_itens || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
-    const finalTotal = Number(p.total || 0);
 
     let descRowHtml = "";
     if (desc > 0) {
@@ -489,12 +748,12 @@ const Propostas = () => {
     }
 
     return `
-      <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; padding: 10px; max-width: 800px; margin: 0 auto;">
+      <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; padding: 20px; max-width: 800px; margin: 0 auto; background: #ffffff; border-top: 6px solid #0f172a; border-bottom: 2px solid #cbd5e1;">
         <!-- Cabeçalho -->
-        <div style="text-align: center; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 20px;">
+        <div style="text-align: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 24px;">
           ${logoHtml}
-          <div style="font-size: 18px; font-weight: bold;">${comp.name || "Sua Empresa"}</div>
-          <div style="font-size: 12px; color: #64748b;">
+          <div style="font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 6px;">${comp.name || "Sua Empresa"}</div>
+          <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
             ${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` | ${compEndereco}` : ""}
           </div>
           ${compContato ? `<div style="font-size: 12px; color: #64748b;">${compContato}</div>` : ""}
@@ -507,9 +766,9 @@ const Propostas = () => {
         </div>
 
         <!-- Informações do Cliente -->
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-bottom: 25px; font-size: 13px;">
-          <div style="font-weight: bold; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 8px; color: #0f172a;">DADOS DO CLIENTE</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin-bottom: 25px; font-size: 13px;">
+          <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px; color: #0f172a;">DADOS DO CLIENTE</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
             <div><strong>Cliente:</strong> ${cli.nome || "-"}</div>
             <div><strong>CPF/CNPJ:</strong> ${cli.cpf_cnpj || "-"}</div>
             <div><strong>Endereço:</strong> ${cliAddressFormat(cliEndereco)}</div>
@@ -522,22 +781,30 @@ const Propostas = () => {
         <!-- Tabela de Itens -->
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px;">
           <thead>
-            <tr style="background-color: #f1f5f9;">
-              <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-weight: bold;">Descrição do Produto / Serviço</th>
-              <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-weight: bold; width: 80px;">Qtd</th>
-              <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Val. Unitário</th>
-              <th style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Total</th>
+            <tr style="background-color: #334155; color: #ffffff;">
+              <th style="border: 1px solid #334155; padding: 10px; text-align: left; font-weight: bold;">Descrição do Produto / Serviço</th>
+              <th style="border: 1px solid #334155; padding: 10px; text-align: center; font-weight: bold; width: 80px;">Qtd</th>
+              <th style="border: 1px solid #334155; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Val. Unitário</th>
+              <th style="border: 1px solid #334155; padding: 10px; text-align: right; font-weight: bold; width: 120px;">Total</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
             ${descRowHtml}
             <tr style="font-weight: bold; background-color: #f8fafc;">
-              <td colspan="3" style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px;">VALOR TOTAL DA PROPOSTA:</td>
-              <td style="border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 14px; color: #0f172a;">R$ ${formatCurrency(finalTotal)}</td>
+              <td colspan="3" style="border: 1px solid #cbd5e1; padding: 12px; text-align: right; font-size: 14px;">VALOR TOTAL DA PROPOSTA:</td>
+              <td style="border: 1px solid #cbd5e1; padding: 12px; text-align: right; font-size: 14px; color: #0f172a;">R$ ${formatCurrency(finalTotal)}</td>
             </tr>
           </tbody>
         </table>
+
+        ${p.observacoes ? `
+        <!-- Observações -->
+        <div style="margin-bottom: 30px; font-size: 13px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px;">
+          <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px; color: #0f172a;">OBSERVAÇÕES</div>
+          <div style="white-space: pre-wrap; color: #334155; line-height: 1.5;">${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>
+        ` : ""}
 
         <!-- Espaço para assinatura -->
         <div style="margin-top: 60px; font-size: 13px;">
@@ -675,6 +942,36 @@ const Propostas = () => {
                 </div>
 
                 <div className="space-y-2">
+                  <Label>Empresa Emissora</Label>
+                  <Select value={companyId} onValueChange={setCompanyId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a empresa..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} {c.is_default ? " (Padrão)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Modelo de Proposta (Layout Visual)</Label>
+                  <Select value={modeloProposta} onValueChange={setModeloProposta}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o modelo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="classico">🏢 Modelo 1: Clássico / Corporativo</SelectItem>
+                      <SelectItem value="moderno">🚀 Modelo 2: Moderno / Tech</SelectItem>
+                      <SelectItem value="elegante">👑 Modelo 3: Elegante / Executivo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Título do Documento</Label>
                   <Input
                     value={titulo}
@@ -682,6 +979,16 @@ const Propostas = () => {
                     placeholder="Ex.: PROPOSTA COMERCIAL"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2 mt-4">
+                <Label>Texto Livre / Observações</Label>
+                <Textarea
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  placeholder="Observações adicionais ou texto livre da proposta..."
+                  className="min-h-[100px]"
+                />
               </div>
 
               {/* Grid Editável de Itens */}
@@ -813,6 +1120,7 @@ const Propostas = () => {
             <TableRow>
               <TableHead>Data</TableHead>
               <TableHead>Cliente</TableHead>
+              <TableHead>Empresa / Modelo</TableHead>
               <TableHead>Tipo de Proposta</TableHead>
               <TableHead>Valor Total</TableHead>
               <TableHead>Assinatura</TableHead>
@@ -824,6 +1132,12 @@ const Propostas = () => {
               <TableRow key={p.id}>
                 <TableCell>{format(new Date(p.data_proposta + "T12:00:00"), "dd/MM/yyyy")}</TableCell>
                 <TableCell className="font-medium">{p.clientes?.nome || "-"}</TableCell>
+                <TableCell className="text-xs space-y-1">
+                  <div className="font-medium text-slate-800">{(p.company_settings?.name) || (companies.find(c => c.id === p.company_id)?.name) || "Empresa"}</div>
+                  {((p as any).modelo_proposta === "moderno") && <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-[10px]">Tech Moderno</Badge>}
+                  {((p as any).modelo_proposta === "elegante") && <Badge variant="secondary" className="bg-amber-50 text-amber-800 text-[10px]">Executivo</Badge>}
+                  {(!((p as any).modelo_proposta) || (p as any).modelo_proposta === "classico") && <Badge variant="outline" className="text-slate-600 text-[10px]">Clássico</Badge>}
+                </TableCell>
                 <TableCell>{p.tipo_proposta || "-"}</TableCell>
                 <TableCell>R$ {formatCurrency(Number(p.total || 0))}</TableCell>
                 <TableCell>

@@ -64,6 +64,7 @@ const Contratos = () => {
   const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([]);
   const [modelos, setModelos] = useState<{ id: string; nome: string; conteudo: string }[]>([]);
   const [companyId, setCompanyId] = useState<string>("");
+  const [companies, setCompanies] = useState<any[]>([]);
   const [company, setCompany] = useState<any>(null);
   const [vendedores, setVendedores] = useState<{ id: string; nome: string }[]>([]);
   const [enviandoVendedor, setEnviandoVendedor] = useState<string | null>(null);
@@ -149,18 +150,21 @@ const Contratos = () => {
   };
 
   const loadDependencies = async () => {
-    const [resClientes, resModelos, resCompany, resVendedores] = await Promise.all([
+    const [resClientes, resModelos, resCompanies, resVendedores] = await Promise.all([
       supabase.from("clientes").select("id, nome").order("nome"),
       supabase.from("modelos").select("id, nome, conteudo").order("nome"),
-      supabase.from("company_settings").select("*").limit(1).maybeSingle(),
+      supabase.from("company_settings").select("*").order("created_at", { ascending: true }),
       supabase.from("vendedores").select("id, nome").eq("ativo", true).order("nome"),
     ]);
     setClientes(resClientes.data || []);
     setModelos(resModelos.data || []);
     setVendedores(resVendedores.data || []);
-    if (resCompany.data) {
-      setCompanyId(resCompany.data.id);
-      setCompany(resCompany.data);
+    const comps = resCompanies.data || [];
+    setCompanies(comps);
+    const defComp = comps.find((c: any) => c.is_default) || comps[0];
+    if (defComp) {
+      setCompanyId(defComp.id);
+      setCompany(defComp);
     }
   };
 
@@ -644,6 +648,21 @@ const Contratos = () => {
 
               <TabsContent value="form" className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Empresa Emissora</Label>
+                    <Select value={companyId} onValueChange={(val) => { setCompanyId(val); setCompany(companies.find(c => c.id === val)); }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a empresa..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name} {c.is_default ? " (Padrão)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-2">
                     <Label>Cliente</Label>
                     <Select value={clienteId} onValueChange={setClienteId}>
