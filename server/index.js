@@ -1286,12 +1286,9 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
           </div>
           <div style="font-size:22px;font-weight:bold;color:#f59e0b;font-family:Georgia,serif;">R$ ${fmtMoeda(total)}</div>
         </div>
-        ${p.observacoes ? `<div style="border-left:3px solid #d97706;padding:14px 18px;background:#fdfbf7;margin-bottom:32px;font-size:13px;font-family:Arial,sans-serif;">
+        ${p.observacoes ? `<div style="border-left:3px solid #d97706;padding:14px 18px;background:#fdfbf7;margin-bottom:32px;font-size:13px;font-family:Georgia,serif;">
           <div style="font-weight:bold;color:#92400e;margin-bottom:4px;font-size:12px;text-transform:uppercase;">Observações</div>
           <div style="white-space:pre-wrap;color:#4b5563;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
-        </div>` : ""}
-      </div>`;
-    }ce:pre-wrap;color:#4b5563;line-height:1.6;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
         </div>` : ""}
       </div>`;
     } else {
