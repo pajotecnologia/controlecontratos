@@ -1155,9 +1155,11 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
     const empresaLogo = logoUrl ? `<img src="${logoUrl}" alt="Logo" style="max-height:80px;max-width:220px;object-fit:contain;" />` : "";
     const compEndereco = [comp.endereco, comp.bairro, comp.cidade, comp.cep ? `CEP: ${comp.cep}` : ""].filter(Boolean).join(" - ");
     const compContato = [comp.telefone ? `Tel.: ${comp.telefone}` : "", comp.email ? `Email: ${comp.email}` : ""].filter(Boolean).join(" | ");
-    const desc = Number(p.desconto || 0);
-    const total = Number(p.total || 0);
-    const totalItens = it    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
+    const totalItens = itens.reduce((s, i) => s + Number(i.total || 0), 0);
+    const modelo = p.modelo_proposta || "classico";
+    let html = "";
+
+    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
     if (modelo === "moderno") {
       const rowsHtmlModerno = itens.map((item, idx) => {
         let imgHtml = "";
