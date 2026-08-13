@@ -19,6 +19,34 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 app.use("/uploads", express.static(UPLOAD_DIR));
 
+const PUBLIC_UPLOADS_DIR = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(PUBLIC_UPLOADS_DIR)) fs.mkdirSync(PUBLIC_UPLOADS_DIR, { recursive: true });
+app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
+
+const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 5 * 1024 * 1024 } });
+app.post("/upload", requireAuth, upload.single("file"), (req, res) => {
+  try {
+    if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
+    if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    const ext = (req.file.originalname.split(".").pop() || "png").toLowerCase();
+    const finalName = `logo-${Date.now()}.${ext}`;
+    const destPath = path.join(UPLOAD_DIR, finalName);
+    fs.renameSync(req.file.path, destPath);
+
+    try {
+      if (!fs.existsSync(PUBLIC_UPLOADS_DIR)) fs.mkdirSync(PUBLIC_UPLOADS_DIR, { recursive: true });
+      fs.copyFileSync(destPath, path.join(PUBLIC_UPLOADS_DIR, finalName));
+    } catch (e) {
+      console.log("[AVISO COPY UPLOADS]", e.message);
+    }
+
+    res.json({ url: `/uploads/${finalName}` });
+  } catch (err) {
+    console.error("[UPLOAD ERRO]", err);
+    res.status(500).json({ error: err.message || "Falha ao salvar upload da logomarca" });
+  }
+});
+
 const TABLES_ADMIN_WRITE = new Set([
   "clientes", "vendedores", "vendas", "venda_vendedores", "parcelas",
   "company_settings", "evolution_settings", "smtp_settings", "user_roles",
@@ -286,25 +314,6 @@ app.get("/users", requireAuth, async (req, res) => {
     res.json({ data: rows });
   } catch (e) {
     res.status(500).json({ error: e.message });
-  }
-});
-
-// ============================================================================
-// UPLOAD (logomarca)
-// ============================================================================
-const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 5 * 1024 * 1024 } });
-app.post("/upload", requireAuth, upload.single("file"), (req, res) => {
-  try {
-    if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
-    if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
-    const ext = (req.file.originalname.split(".").pop() || "png").toLowerCase();
-    const finalName = `logo-${Date.now()}.${ext}`;
-    const destPath = path.join(UPLOAD_DIR, finalName);
-    fs.renameSync(req.file.path, destPath);
-    res.json({ url: `/uploads/${finalName}` });
-  } catch (err) {
-    console.error("[UPLOAD ERRO]", err);
-    res.status(500).json({ error: err.message || "Falha ao salvar upload da logomarca" });
   }
 });
 
