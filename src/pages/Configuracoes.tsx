@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { supabase, uploadLogo, notify, getMessageTemplates, createMessageTemplate, updateMessageTemplate, deleteMessageTemplate, getAsaasSettings, saveAsaasSettings, testAsaasConnection } from "@/integrations/api/client";
+import { supabase, uploadLogo, cleanLogoUrl, notify, getMessageTemplates, createMessageTemplate, updateMessageTemplate, deleteMessageTemplate, getAsaasSettings, saveAsaasSettings, testAsaasConnection } from "@/integrations/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -224,7 +224,7 @@ const Configuracoes = () => {
     setCargoResponsavel(comp.cargo_responsavel || "");
     setCpfResponsavel(comp.cpf_responsavel || "");
     setLogoFile(null);
-    setLogoUrl(comp.logo_url || "");
+    setLogoUrl(cleanLogoUrl(comp.logo_url || ""));
     setAssinaturaEmpresa(comp.assinatura_imagem || "");
     setPublicUrl(comp.public_url || "");
     setIsDefault(!!comp.is_default);
@@ -541,7 +541,7 @@ const Configuracoes = () => {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             {comp.logo_url ? (
-                              <img src={comp.logo_url} alt="Logo" className="h-10 w-10 rounded object-contain border bg-white" />
+                              <img src={cleanLogoUrl(comp.logo_url)} alt="Logo" className="h-10 w-10 rounded object-contain border bg-white" />
                             ) : (
                               <div className="h-10 w-10 rounded bg-slate-100 border flex items-center justify-center text-slate-600 font-bold text-sm">
                                 {comp.name ? comp.name.substring(0, 2).toUpperCase() : "EM"}
@@ -662,7 +662,7 @@ const Configuracoes = () => {
 
                 <div className="space-y-2">
                   <Label>Logomarca</Label>
-                  {logoUrl && <img src={logoUrl} alt="Logo" className="h-16 w-16 rounded object-contain border bg-white p-1" />}
+                  {logoUrl && <img src={cleanLogoUrl(logoUrl)} alt="Logo" className="h-16 w-16 rounded object-contain border bg-white p-1" />}
                   <Input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
                 </div>
 

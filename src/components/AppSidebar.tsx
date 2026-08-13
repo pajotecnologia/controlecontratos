@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LayoutDashboard, Users, ShoppingCart, Settings, LogOut, UserCheck, Shield, FileText, FileSignature, LayoutTemplate, MessageSquare } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/api/client";
+import { supabase, cleanLogoUrl } from "@/integrations/api/client";
 import {
   Sidebar,
   SidebarContent,
@@ -32,7 +32,7 @@ export function AppSidebar() {
       .then(({ data }) => {
         if (data) {
           setCompanyName(data.name);
-          setLogoUrl(data.logo_url || "");
+          setLogoUrl(cleanLogoUrl(data.logo_url));
         }
       });
   };

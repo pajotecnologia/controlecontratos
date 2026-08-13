@@ -25,6 +25,8 @@ import AssinarContrato from "./pages/AssinarContrato";
 import AssinarProposta from "./pages/AssinarProposta";
 import NotFound from "./pages/NotFound";
 
+import { cleanLogoUrl } from "@/integrations/api/client";
+
 const queryClient = new QueryClient();
 
 // Define favicon and title from company settings
@@ -41,7 +43,7 @@ function CompanyBranding() {
             link.rel = "icon";
             document.head.appendChild(link);
           }
-          link.href = d.logo_url;
+          link.href = cleanLogoUrl(d.logo_url);
         }
       })
       .catch(() => {});

@@ -170,6 +170,19 @@ export async function uploadArquivo(file: File): Promise<{ url: string | null; e
   return { url: json.url, error: null };
 }
 
+export function cleanLogoUrl(url?: string | null): string {
+  if (!url) return "";
+  let trimmed = url.trim();
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return trimmed;
+  if (trimmed.includes("/uploads/")) {
+    return trimmed.substring(trimmed.indexOf("/uploads/"));
+  }
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/")) {
+    return `/${trimmed}`;
+  }
+  return trimmed;
+}
+
 export async function uploadLogo(file: File): Promise<{ url: string | null; error: string | null }> {
   return uploadArquivo(file);
 }

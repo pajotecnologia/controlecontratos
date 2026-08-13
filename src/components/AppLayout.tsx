@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { supabase } from "@/integrations/api/client";
+import { supabase, cleanLogoUrl } from "@/integrations/api/client";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [companyName, setCompanyName] = useState("");
@@ -17,7 +17,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       .then(({ data }) => {
         if (data) {
           setCompanyName(data.name);
-          setLogoUrl(data.logo_url || "");
+          setLogoUrl(cleanLogoUrl(data.logo_url));
         }
       });
   };

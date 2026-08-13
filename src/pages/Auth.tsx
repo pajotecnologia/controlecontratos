@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/api/client";
+import { supabase, cleanLogoUrl } from "@/integrations/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,7 +75,7 @@ const Auth = () => {
       {/* Painel esquerdo */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col items-center justify-center p-12 gap-8">
         {company.logo_url ? (
-          <img src={company.logo_url} alt="Logomarca" className="max-h-28 max-w-xs object-contain" />
+          <img src={cleanLogoUrl(company.logo_url)} alt="Logomarca" className="max-h-28 max-w-xs object-contain" />
         ) : (
           <div className="w-24 h-24 rounded-2xl bg-slate-700 flex items-center justify-center text-4xl font-bold text-white select-none">
             {company.name?.[0]?.toUpperCase() || "C"}
@@ -104,7 +104,7 @@ const Auth = () => {
         {/* Logo mobile */}
         <div className="flex flex-col items-center gap-3 mb-8 lg:hidden">
           {company.logo_url ? (
-            <img src={company.logo_url} alt="Logomarca" className="max-h-16 object-contain" />
+            <img src={cleanLogoUrl(company.logo_url)} alt="Logomarca" className="max-h-16 object-contain" />
           ) : (
             <div className="w-14 h-14 rounded-xl bg-slate-900 flex items-center justify-center text-2xl font-bold text-white">
               {company.name?.[0]?.toUpperCase() || "C"}
