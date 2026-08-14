@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContasPagarTab } from "@/components/ContasPagarTab";
 import { FluxoCaixaTab } from "@/components/FluxoCaixaTab";
 import { CategoriasDespesaTab } from "@/components/CategoriasDespesaTab";
+import { SearchableClientSelect } from "@/components/SearchableClientSelect";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -941,19 +942,16 @@ const Financeiro = () => {
                   <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Cliente</Label>
-                    <Select value={clienteId} onValueChange={(id) => {
-                      setClienteId(id);
-                      const c = clientes.find((x) => x.id === id);
-                      if (c) setClienteNome(c.nome);
-                    }}>
-                      <SelectTrigger><SelectValue placeholder="Selecione o cliente..." /></SelectTrigger>
-                      <SelectContent>
-                        {clientes.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Cliente *</Label>
+                    <SearchableClientSelect
+                      clients={clientes}
+                      value={clienteId}
+                      onValueChange={(id, c) => {
+                        setClienteId(id);
+                        if (c) setClienteNome(c.nome);
+                      }}
+                      placeholder="Pesquisar ou selecionar cliente..."
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Valor do Serviço (R$)</Label>

@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { maskCurrency, unmaskCurrency, formatCurrency } from "@/lib/masks";
+import { SearchableClientSelect } from "@/components/SearchableClientSelect";
 
 type Contrato = {
   id: string;
@@ -664,19 +665,13 @@ const Contratos = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Cliente</Label>
-                    <Select value={clienteId} onValueChange={setClienteId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o cliente..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clientes.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Cliente *</Label>
+                    <SearchableClientSelect
+                      clients={clientes}
+                      value={clienteId}
+                      onValueChange={setClienteId}
+                      placeholder="Pesquisar ou selecionar cliente..."
+                    />
                   </div>
 
                   <div className="space-y-2">

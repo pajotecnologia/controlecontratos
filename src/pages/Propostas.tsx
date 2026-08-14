@@ -15,6 +15,7 @@ import { Plus, Pencil, Trash2, Eye, Printer, FileText, X, Send, Copy, CheckCircl
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { maskCurrency, unmaskCurrency, formatCurrency } from "@/lib/masks";
+import { SearchableClientSelect } from "@/components/SearchableClientSelect";
 
 type PropostaItem = {
   id?: string;
@@ -897,19 +898,13 @@ const Propostas = () => {
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Cliente</Label>
-                  <Select value={clienteId} onValueChange={setClienteId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cliente..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clientes.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Cliente *</Label>
+                  <SearchableClientSelect
+                    clients={clientes}
+                    value={clienteId}
+                    onValueChange={setClienteId}
+                    placeholder="Pesquisar ou selecionar cliente..."
+                  />
                 </div>
 
                 <div className="space-y-2">

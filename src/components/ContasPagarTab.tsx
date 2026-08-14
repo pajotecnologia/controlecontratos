@@ -18,6 +18,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { SearchableFornecedorSelect } from "@/components/SearchableFornecedorSelect";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -714,18 +715,13 @@ export function ContasPagarTab() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Fornecedor (Credor)</Label>
-                <Select value={fornecedorId} onValueChange={setFornecedorId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sem_fornecedor">Sem Fornecedor</SelectItem>
-                    {fornecedores.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>{f.razao_social}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Fornecedor (Opcional)</Label>
+                <SearchableFornecedorSelect
+                  fornecedores={fornecedores}
+                  value={fornecedorId}
+                  onValueChange={setFornecedorId}
+                  placeholder="Pesquisar fornecedor..."
+                />
               </div>
 
               <div className="space-y-2">
