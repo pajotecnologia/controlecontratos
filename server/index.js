@@ -1826,10 +1826,8 @@ const server = app.listen(PORT, "0.0.0.0", () => console.log(`API rodando na por
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
-    console.error(`[ERRO] A porta ${PORT} está ocupada. Aguardando 3s para o PM2 liberar...`);
-    setTimeout(() => {
-      process.exit(1);
-    }, 3000);
+    console.error(`[ERRO] A porta ${PORT} está ocupada. Exitando para liberação do PM2...`);
+    process.exit(1);
   } else {
     console.error("[ERRO SERVER]", err);
   }
