@@ -26,15 +26,34 @@ type Cliente = {
   cpf_responsavel: string | null;
 };
 
-const EMPTY_FORM = { nome: "", telefone: "", email: "", cpf_cnpj: "", endereco: "", bairro: "", cidade: "", estado: "", cep: "", nome_responsavel: "", cargo_responsavel: "", cpf_responsavel: "" };
+const EMPTY_FORM = {
+  nome: "",
+  telefone: "",
+  email: "",
+  cpf_cnpj: "",
+  endereco: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+  cep: "",
+  nome_responsavel: "",
+  cargo_responsavel: "",
+  cpf_responsavel: "",
+};
 
-const Clientes = () => {
+export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
-  useEffect(() => { load(); }, []);
+  const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    load();
+  }, []);
 
   const load = async () => {
     const { data } = await supabase.from("clientes").select("*").order("nome");
@@ -62,7 +81,7 @@ const Clientes = () => {
     if (editing) {
       const { error } = await supabase.from("clientes").update(payload).eq("id", editing.id);
       if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
-      toast({ title: "Cliente updated!" });
+      toast({ title: "Cliente atualizado!" });
     } else {
       const { error } = await supabase.from("clientes").insert(payload);
       if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
@@ -99,10 +118,6 @@ const Clientes = () => {
     toast({ title: "Cliente excluído!" });
     load();
   };
-
-  const [search, setSearch] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const filteredClientes = clientes.filter((c) => {
     if (!search.trim()) return true;
@@ -149,84 +164,80 @@ const Clientes = () => {
                 <DialogTitle className="text-xl font-bold">{editing ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
-              {/* Nome + CPF/CNPJ */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2 space-y-2">
-                  <Label>Nome / Razão Social <span className="text-destructive">*</span></Label>
-                  <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome completo ou Razão Social" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label>Nome / Razão Social <span className="text-destructive">*</span></Label>
+                    <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome completo ou Razão Social" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CPF/CNPJ</Label>
+                    <Input value={form.cpf_cnpj} onChange={(e) => setForm({ ...form, cpf_cnpj: maskCPFCNPJ(e.target.value) })} placeholder="000.000.000-00" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>CPF/CNPJ</Label>
-                  <Input value={form.cpf_cnpj} onChange={(e) => setForm({ ...form, cpf_cnpj: maskCPFCNPJ(e.target.value) })} placeholder="000.000.000-00" />
-                </div>
-              </div>
 
-              {/* Telefone + E-mail */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Telefone / WhatsApp</Label>
-                  <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })} placeholder="(00) 00000-0000" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Telefone / WhatsApp</Label>
+                    <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })} placeholder="(00) 00000-0000" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>E-mail</Label>
+                    <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@email.com" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>E-mail</Label>
-                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@email.com" />
-                </div>
-              </div>
 
-              {/* Endereço + CEP */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2 space-y-2">
-                  <Label>Endereço</Label>
-                  <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} placeholder="Rua, número, complemento" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2 space-y-2">
+                    <Label>Endereço</Label>
+                    <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} placeholder="Rua, número, complemento" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CEP</Label>
+                    <Input value={form.cep} onChange={(e) => setForm({ ...form, cep: maskCEP(e.target.value) })} placeholder="00000-000" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>CEP</Label>
-                  <Input value={form.cep} onChange={(e) => setForm({ ...form, cep: maskCEP(e.target.value) })} placeholder="00000-000" />
-                </div>
-              </div>
 
-              {/* Bairro + Cidade + Estado */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Bairro</Label>
-                  <Input value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} placeholder="Bairro" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} placeholder="Cidade" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Estado (UF)</Label>
-                  <Input value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase() })} placeholder="UF" maxLength={2} />
-                </div>
-              </div>
-
-              {/* Seção Responsável */}
-              <div className="rounded-lg border p-4 space-y-3 bg-slate-50/50">
-                <Label className="font-semibold text-sm text-slate-800">Dados do Responsável / Contato</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs">Nome do Responsável</Label>
-                    <Input value={form.nome_responsavel} onChange={(e) => setForm({ ...form, nome_responsavel: e.target.value })} placeholder="Nome do contato" />
+                    <Label>Bairro</Label>
+                    <Input value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} placeholder="Bairro" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Cargo / Função</Label>
-                    <Input value={form.cargo_responsavel} onChange={(e) => setForm({ ...form, cargo_responsavel: e.target.value })} placeholder="Ex.: Diretor" />
+                    <Label>Cidade</Label>
+                    <Input value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} placeholder="Cidade" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">CPF do Responsável</Label>
-                    <Input value={form.cpf_responsavel} onChange={(e) => setForm({ ...form, cpf_responsavel: maskCPF(e.target.value) })} placeholder="000.000.000-00" />
+                    <Label>Estado (UF)</Label>
+                    <Input value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase() })} placeholder="UF" maxLength={2} />
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSave} className="px-6">{editing ? "Atualizar Cliente" : "Salvar Cliente"}</Button>
+                <div className="rounded-lg border p-4 space-y-3 bg-slate-50/50">
+                  <Label className="font-semibold text-sm text-slate-800">Dados do Responsável / Contato</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Nome do Responsável</Label>
+                      <Input value={form.nome_responsavel} onChange={(e) => setForm({ ...form, nome_responsavel: e.target.value })} placeholder="Nome do contato" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Cargo / Função</Label>
+                      <Input value={form.cargo_responsavel} onChange={(e) => setForm({ ...form, cargo_responsavel: e.target.value })} placeholder="Ex.: Diretor" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">CPF do Responsável</Label>
+                      <Input value={form.cpf_responsavel} onChange={(e) => setForm({ ...form, cpf_responsavel: maskCPF(e.target.value) })} placeholder="000.000.000-00" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleSave} className="px-6">{editing ? "Atualizar Cliente" : "Salvar Cliente"}</Button>
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="rounded-md border overflow-x-auto">
@@ -273,6 +284,4 @@ const Clientes = () => {
       </div>
     </div>
   );
-};
-
-export default Clientes;
+}
