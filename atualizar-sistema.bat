@@ -14,14 +14,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/3] Copiando build para server/public...
-if exist "server\public" rmdir /s /q "server\public"
-xcopy /e /i /q "dist" "server\public"
-if errorlevel 1 (
-  echo ERRO: falha ao copiar dist.
-  pause
-  exit /b 1
-)
+echo [2/3] Copiando build para a raiz, public e server/public...
+xcopy /e /i /q /y "dist" "."
+xcopy /e /i /q /y "dist" "public"
+xcopy /e /i /q /y "dist" "server\public"
 
 echo [3/3] Aplicando migracoes no banco de dados...
 cd server
