@@ -17,7 +17,7 @@
 Sempre que houver atualizações enviadas ao GitHub, acesse o **Terminal do aaPanel** na VPS e rode **apenas este comando de 1 linha**:
 
 ```bash
-rm -rf /tmp/repo_temp && git clone https://github.com/pajotecnologia/controlecontratos.git /tmp/repo_temp && cp -rf /tmp/repo_temp/server/* /www/wwwroot/contratos.pajotech.com.br/ && rm -rf /tmp/repo_temp && cd /www/wwwroot/contratos.pajotech.com.br && npm run migrate && pm2 restart all
+rm -rf /tmp/repo_temp && git clone https://github.com/pajotecnologia/controlecontratos.git /tmp/repo_temp && cp -rf /tmp/repo_temp/* /www/wwwroot/contratos.pajotech.com.br/ && cp -rf /tmp/repo_temp/server/* /www/wwwroot/contratos.pajotech.com.br/ && rm -rf /tmp/repo_temp && cd /www/wwwroot/contratos.pajotech.com.br && npm run migrate && pm2 restart all
 ```
 
 ### O que este comando faz automaticamente:
