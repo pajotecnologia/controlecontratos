@@ -1703,10 +1703,6 @@ app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
   }
 });
 
-
-
-const PORT = process.env.PORT || 3001;
-
 app.post("/notify/agendar", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
   try {
