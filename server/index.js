@@ -1769,7 +1769,10 @@ setInterval(async () => {
 // ============================================================================
 // Servir o frontend compilado (SPA)
 // ============================================================================
-const PUBLIC_DIR = path.join(__dirname, "public");
+let PUBLIC_DIR = path.join(__dirname, "public");
+if (!fs.existsSync(path.join(PUBLIC_DIR, "index.html")) && fs.existsSync(path.join(__dirname, "server", "public", "index.html"))) {
+  PUBLIC_DIR = path.join(__dirname, "server", "public");
+}
 if (fs.existsSync(PUBLIC_DIR)) {
   app.use(express.static(PUBLIC_DIR));
   app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
