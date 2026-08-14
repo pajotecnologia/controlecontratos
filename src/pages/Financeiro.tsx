@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, X, CalendarIcon, ChevronLeft, ChevronRight, MessageCircle, Mail, MoreVertical, ReceiptText, Send, Printer, CreditCard, QrCode, Copy, ExternalLink, RefreshCw, SquarePen } from "lucide-react";
+import { Plus, Pencil, Trash2, X, CalendarIcon, ChevronLeft, ChevronRight, MessageCircle, Mail, MoreVertical, ReceiptText, Send, Printer, CreditCard, QrCode, Copy, ExternalLink, RefreshCw, SquarePen, ArrowDownLeft, ArrowUpRight, BarChart3, Tag } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { maskCurrency, unmaskCurrency, formatCurrency } from "@/lib/masks";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +21,10 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ContasPagarTab } from "@/components/ContasPagarTab";
+import { FluxoCaixaTab } from "@/components/FluxoCaixaTab";
+import { CategoriasDespesaTab } from "@/components/CategoriasDespesaTab";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -898,19 +902,43 @@ const Financeiro = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Financeiro</h2>
-        {isAdmin && (
-          <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
-            <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" /> Novo Lançamento</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editing ? "Editar Lançamento" : "Novo Lançamento"}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestão Financeira</h1>
+          <p className="text-muted-foreground">Contas a Receber, Contas a Pagar, Fluxo de Caixa e Fornecedores.</p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="receber" className="w-full space-y-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-2xl">
+          <TabsTrigger value="receber" className="gap-2">
+            <ArrowUpRight className="h-4 w-4 text-emerald-600" /> Contas a Receber
+          </TabsTrigger>
+          <TabsTrigger value="pagar" className="gap-2">
+            <ArrowDownLeft className="h-4 w-4 text-rose-600" /> Contas a Pagar
+          </TabsTrigger>
+          <TabsTrigger value="fluxo" className="gap-2">
+            <BarChart3 className="h-4 w-4 text-blue-600" /> Fluxo de Caixa
+          </TabsTrigger>
+          <TabsTrigger value="categorias" className="gap-2">
+            <Tag className="h-4 w-4 text-violet-600" /> Categorias
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="receber" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">Lançamentos de Contratos (A Receber)</h2>
+            {isAdmin && (
+              <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
+                <DialogTrigger asChild>
+                  <Button><Plus className="mr-2 h-4 w-4" /> Novo Contrato (Receita)</Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editing ? "Editar Lançamento" : "Novo Lançamento"}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Cliente</Label>
@@ -1843,6 +1871,20 @@ const Financeiro = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+
+        <TabsContent value="pagar">
+          <ContasPagarTab />
+        </TabsContent>
+
+        <TabsContent value="fluxo">
+          <FluxoCaixaTab />
+        </TabsContent>
+
+        <TabsContent value="categorias">
+          <CategoriasDespesaTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

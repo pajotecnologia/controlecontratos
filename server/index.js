@@ -51,6 +51,7 @@ const TABLES_ADMIN_WRITE = new Set([
   "clientes", "vendedores", "vendas", "venda_vendedores", "parcelas",
   "company_settings", "evolution_settings", "smtp_settings", "user_roles",
   "modelos", "contratos", "propostas", "proposta_itens",
+  "fornecedores", "categorias_despesa", "despesas", "parcelas_despesas",
 ]);
 
 // ============================================================================
@@ -1703,7 +1704,7 @@ app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
 
 
 
-const PORT = process.env.PORT || 3005;
+const PORT = process.env.PORT || 3001;
 
 app.post("/notify/agendar", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
@@ -1821,7 +1822,7 @@ async function initTables() {
 }
 initTables();
 
-const server = app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+const server = app.listen(PORT, "0.0.0.0", () => console.log(`API rodando na porta ${PORT}`));
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {

@@ -45,7 +45,7 @@ origem do servidor — sem `localhost` fixo.
 Via gerenciador de arquivos do aaPanel ou SFTP, envie a pasta `server/` para:
 
 ```
-/www/wwwroot/controle-comissoes/
+/www/wwwroot/contratos.pajotech.com.br/
 ```
 
 Não envie `node_modules` — será instalado na VPS.
@@ -57,7 +57,7 @@ Não envie `node_modules` — será instalado na VPS.
 Abra o **Terminal** no aaPanel e execute:
 
 ```bash
-cd /www/wwwroot/controle-comissoes
+cd /www/wwwroot/contratos.pajotech.com.br
 
 # 1. Instalar dependências
 npm install --omit=dev
@@ -95,14 +95,14 @@ node create-admin.js seuemail@empresa.com SuaSenha123
 ## Passo 4 — Configurar PM2 no aaPanel
 
 No aaPanel vá em **Node.js Projects** → Adicionar:
-- Diretório: `/www/wwwroot/controle-comissoes`
+- Diretório: `/www/wwwroot/contratos.pajotech.com.br`
 - Arquivo de entrada: `index.js`
 - Porta: `3001`
 
 Ou pelo terminal:
 
 ```bash
-pm2 start /www/wwwroot/controle-comissoes/index.js --name controle-comissoes
+pm2 start /www/wwwroot/contratos.pajotech.com.br/index.js --name controle-comissoes
 pm2 save
 pm2 startup
 ```
@@ -144,7 +144,7 @@ atualizar-sistema.bat
 ### VPS — enviar arquivos atualizados via aaPanel/SFTP e depois:
 
 ```bash
-cd /www/wwwroot/controle-comissoes
+cd /www/wwwroot/contratos.pajotech.com.br
 npm install --omit=dev
 npm run migrate
 pm2 restart controle-comissoes
@@ -160,7 +160,7 @@ Se o banco já existia antes das últimas alterações, rode a migração
 para adicionar os novos campos:
 
 ```bash
-cd /www/wwwroot/controle-comissoes
+cd /www/wwwroot/contratos.pajotech.com.br
 npm run migrate
 ```
 

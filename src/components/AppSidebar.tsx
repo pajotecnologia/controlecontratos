@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Users, ShoppingCart, Settings, LogOut, UserCheck, Shield, FileText, FileSignature, LayoutTemplate, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Users, ShoppingCart, Settings, LogOut, UserCheck, Shield, FileText, FileSignature, LayoutTemplate, MessageSquare, Building2 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase, cleanLogoUrl } from "@/integrations/api/client";
@@ -47,6 +47,7 @@ export function AppSidebar() {
     { title: "Dashboard", url: "/", icon: LayoutDashboard },
     { title: "Clientes", url: "/clientes", icon: UserCheck },
     { title: "Vendedores", url: "/vendedores", icon: Users },
+    { title: "Fornecedores", url: "/fornecedores", icon: Building2 },
     { title: "Financeiro", url: "/financeiro", icon: ShoppingCart },
     { title: "Modelos", url: "/modelos", icon: LayoutTemplate },
     { title: "Contratos", url: "/contratos", icon: FileSignature },

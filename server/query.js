@@ -12,6 +12,7 @@ const READABLE_TABLES = new Set([
   "profiles", "user_roles", "clientes", "vendedores", "vendas",
   "venda_vendedores", "parcelas", "company_settings", "evolution_settings", "smtp_settings",
   "modelos", "contratos", "propostas", "proposta_itens",
+  "fornecedores", "categorias_despesa", "despesas", "parcelas_despesas",
 ]);
 
 // Mapa de relacionamentos para os embeds. type 'one' = pertence-a, 'many' = tem-muitos.
@@ -43,6 +44,14 @@ const RELATIONS = {
   },
   proposta_itens: {
     propostas: { table: "propostas", type: "one", local: "proposta_id", foreign: "id" },
+  },
+  despesas: {
+    fornecedores: { table: "fornecedores", type: "one", local: "fornecedor_id", foreign: "id" },
+    categorias_despesa: { table: "categorias_despesa", type: "one", local: "categoria_id", foreign: "id" },
+    parcelas_despesas: { table: "parcelas_despesas", type: "many", local: "id", foreign: "despesa_id" },
+  },
+  parcelas_despesas: {
+    despesas: { table: "despesas", type: "one", local: "despesa_id", foreign: "id" },
   },
 };
 

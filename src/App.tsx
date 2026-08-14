@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Vendedores from "./pages/Vendedores";
 import Clientes from "./pages/Clientes";
+import Fornecedores from "./pages/Fornecedores";
 import Financeiro from "./pages/Financeiro";
 import Modelos from "./pages/Modelos";
 import ModelosEditor from "./pages/ModelosEditor";
@@ -81,6 +82,7 @@ const AppRoutes = () => {
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/vendedores" element={<ProtectedRoute adminOnly><Vendedores /></ProtectedRoute>} />
       <Route path="/clientes" element={<ProtectedRoute adminOnly><Clientes /></ProtectedRoute>} />
+      <Route path="/fornecedores" element={<ProtectedRoute adminOnly><Fornecedores /></ProtectedRoute>} />
       <Route path="/financeiro" element={<ProtectedRoute><Financeiro /></ProtectedRoute>} />
       <Route path="/modelos" element={<ProtectedRoute adminOnly><Modelos /></ProtectedRoute>} />
       <Route path="/modelos/novo" element={<ProtectedRoute adminOnly><ModelosEditor /></ProtectedRoute>} />
