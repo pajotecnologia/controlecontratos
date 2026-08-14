@@ -12,6 +12,7 @@ const { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail, sendCobr
 const { buildPropostaPdf } = require("./pdf");
 
 const app = express();
+const PORT = process.env.PORT || 3005;
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
@@ -51,6 +52,7 @@ const TABLES_ADMIN_WRITE = new Set([
   "clientes", "vendedores", "vendas", "venda_vendedores", "parcelas",
   "company_settings", "evolution_settings", "smtp_settings", "user_roles",
   "modelos", "contratos", "propostas", "proposta_itens",
+  "fornecedores", "categorias_despesa", "despesas", "parcelas_despesas",
 ]);
 
 // ============================================================================
@@ -1703,7 +1705,7 @@ app.post("/notify/enviar-mensagem", requireAuth, async (req, res) => {
 
 
 
-const PORT = process.env.PORT || 3005;
+const PORT = process.env.PORT || 3001;
 
 app.post("/notify/agendar", requireAuth, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: "Apenas administradores" });
@@ -1767,7 +1769,10 @@ setInterval(async () => {
 // ============================================================================
 // Servir o frontend compilado (SPA)
 // ============================================================================
-const PUBLIC_DIR = path.join(__dirname, "public");
+let PUBLIC_DIR = path.join(__dirname, "public");
+if (!fs.existsSync(path.join(PUBLIC_DIR, "index.html")) && fs.existsSync(path.join(__dirname, "server", "public", "index.html"))) {
+  PUBLIC_DIR = path.join(__dirname, "server", "public");
+}
 if (fs.existsSync(PUBLIC_DIR)) {
   app.use(express.static(PUBLIC_DIR));
   app.get("*", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
@@ -1821,14 +1826,12 @@ async function initTables() {
 }
 initTables();
 
-const server = app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+const server = app.listen(PORT, "0.0.0.0", () => console.log(`API rodando na porta ${PORT}`));
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
-    console.error(`[ERRO] A porta ${PORT} está ocupada. Aguardando 3s para o PM2 liberar...`);
-    setTimeout(() => {
-      process.exit(1);
-    }, 3000);
+    console.error(`[ERRO] A porta ${PORT} está ocupada. Exitando para liberação do PM2...`);
+    process.exit(1);
   } else {
     console.error("[ERRO SERVER]", err);
   }

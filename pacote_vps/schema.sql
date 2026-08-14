@@ -298,12 +298,94 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
 );
 
 -- ============================================================================
+-- Fornecedores e Contas a Pagar (Despesas Únicas e Recorrentes)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  razao_social       text NOT NULL,
+  nome_fantasia      text DEFAULT '',
+  cpf_cnpj           text DEFAULT '',
+  inscricao_estadual text DEFAULT '',
+  telefone           text DEFAULT '',
+  whatsapp           text DEFAULT '',
+  email              text DEFAULT '',
+  contato_nome       text DEFAULT '',
+  cep                text DEFAULT '',
+  endereco           text DEFAULT '',
+  bairro             text DEFAULT '',
+  cidade             text DEFAULT '',
+  estado             text DEFAULT '',
+  banco              text DEFAULT '',
+  agencia            text DEFAULT '',
+  conta              text DEFAULT '',
+  tipo_chave_pix     text DEFAULT '',
+  chave_pix          text DEFAULT '',
+  categoria_padrao   text DEFAULT '',
+  observacoes        text DEFAULT '',
+  ativo              boolean NOT NULL DEFAULT true,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS categorias_despesa (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome        text NOT NULL UNIQUE,
+  cor         text DEFAULT '#64748b',
+  descricao   text DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS despesas (
+  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  descricao                  text NOT NULL,
+  fornecedor_id              uuid REFERENCES fornecedores(id) ON DELETE SET NULL,
+  categoria_id               uuid REFERENCES categorias_despesa(id) ON DELETE SET NULL,
+  tipo                       text NOT NULL DEFAULT 'unico',
+  periodicidade_recorrencia  text DEFAULT 'mensal',
+  dia_vencimento_recorrente integer DEFAULT NULL,
+  qtde_parcelas              integer NOT NULL DEFAULT 1,
+  valor_total                numeric(12,2) NOT NULL DEFAULT 0,
+  data_emissao               date NOT NULL DEFAULT CURRENT_DATE,
+  created_by                 uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at                 timestamptz NOT NULL DEFAULT now(),
+  updated_at                 timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS parcelas_despesas (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  despesa_id      uuid NOT NULL REFERENCES despesas(id) ON DELETE CASCADE,
+  numero_parcela  integer NOT NULL DEFAULT 1,
+  valor           numeric(12,2) NOT NULL DEFAULT 0,
+  data_vencimento date NOT NULL,
+  data_pagamento  timestamptz DEFAULT NULL,
+  pago            boolean NOT NULL DEFAULT false,
+  forma_pagamento text DEFAULT '',
+  codigo_barras   text DEFAULT NULL,
+  comprovante_url text DEFAULT NULL,
+  observacao      text DEFAULT NULL,
+  mes_referencia  text DEFAULT NULL,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- Inserir algumas categorias de despesa padrão
+INSERT INTO categorias_despesa (nome, cor, descricao) VALUES
+  ('Aluguel e Imóveis', '#ef4444', 'Aluguel, condomínio, IPTU e taxas prediais'),
+  ('SaaS & Tecnologia', '#3b82f6', 'Servidores, licenças de software e ferramentas'),
+  ('Pessoal & Salários', '#10b981', 'Salários, encargos, pró-labore e comissões'),
+  ('Serviços Prestados', '#f59e0b', 'Honorários de terceiros, contabilidade e consultoria'),
+  ('Impostos e Taxas', '#8b5cf6', 'Tributos municipais, estaduais e federais'),
+  ('Marketing & Vendas', '#ec4899', 'Anúncios, publicidade e eventos'),
+  ('Infraestrutura & Utilidades', '#06b6d4', 'Energia elétrica, água, internet e telefonia'),
+  ('Outras Despesas', '#64748b', 'Despesas diversas não categorizadas')
+ON CONFLICT (nome) DO NOTHING;
+
+-- ============================================================================
 -- Triggers de updated_at
 -- ============================================================================
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['profiles','clientes','vendedores','vendas','company_settings','asaas_settings','evolution_settings','smtp_settings','modelos','contratos','propostas']
+  FOREACH t IN ARRAY ARRAY['profiles','clientes','vendedores','vendas','company_settings','asaas_settings','evolution_settings','smtp_settings','modelos','contratos','propostas','fornecedores','despesas']
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at ON %I', t);
     EXECUTE format('CREATE TRIGGER set_updated_at BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()', t);
@@ -323,6 +405,10 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_user           ON user_roles(user_id);
 CREATE INDEX IF NOT EXISTS idx_parcelas_venda            ON parcelas(venda_id);
 CREATE INDEX IF NOT EXISTS idx_propostas_cliente          ON propostas(cliente_id);
 CREATE INDEX IF NOT EXISTS idx_proposta_itens_proposta     ON proposta_itens(proposta_id);
+CREATE INDEX IF NOT EXISTS idx_despesas_fornecedor        ON despesas(fornecedor_id);
+CREATE INDEX IF NOT EXISTS idx_despesas_categoria         ON despesas(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_parcelas_despesas_despesa  ON parcelas_despesas(despesa_id);
+
 CREATE TABLE IF NOT EXISTS agendamento_mensagens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   data_agendamento TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -334,3 +420,4 @@ CREATE TABLE IF NOT EXISTS agendamento_mensagens (
   log_erro TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
