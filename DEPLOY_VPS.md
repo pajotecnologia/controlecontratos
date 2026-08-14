@@ -73,7 +73,7 @@ Ajuste o `.env` com os dados reais:
 DATABASE_URL="postgresql://usuario:senha@localhost:5432/ctrlcontratos"
 DATABASE_SSL="false"
 JWT_SECRET="gere-uma-string-longa-e-aleatoria-aqui"
-PORT=3001
+PORT=3005
 PUBLIC_URL="https://contratos.pajotech.com.br"
 ```
 

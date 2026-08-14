@@ -12,6 +12,7 @@ const { sendWhatsApp, sendEmail, sendReceiptWhatsApp, sendReceiptEmail, sendCobr
 const { buildPropostaPdf } = require("./pdf");
 
 const app = express();
+const PORT = process.env.PORT || 3005;
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
