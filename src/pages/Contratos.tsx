@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { maskCurrency, unmaskCurrency, formatCurrency } from "@/lib/masks";
 import { SearchableClientSelect } from "@/components/SearchableClientSelect";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type Contrato = {
   id: string;
@@ -127,6 +128,12 @@ const Contratos = () => {
   const [enviandoLink, setEnviandoLink] = useState<string | null>(null);
   const [linkGerado, setLinkGerado] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState("form");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = Math.ceil(contratos.length / pageSize);
+  const paginatedContratos = contratos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
     load();
@@ -873,7 +880,7 @@ const Contratos = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contratos.map((c) => (
+            {paginatedContratos.map((c) => (
               <TableRow key={c.id}>
                 <TableCell>{format(new Date(c.data_emissao + "T12:00:00"), "dd/MM/yyyy")}</TableCell>
                 <TableCell className="font-medium">{c.clientes?.nome || "-"}</TableCell>
@@ -955,6 +962,14 @@ const Contratos = () => {
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={contratos.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>

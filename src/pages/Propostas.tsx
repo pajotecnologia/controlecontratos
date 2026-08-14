@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { maskCurrency, unmaskCurrency, formatCurrency } from "@/lib/masks";
 import { SearchableClientSelect } from "@/components/SearchableClientSelect";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type PropostaItem = {
   id?: string;
@@ -214,6 +215,12 @@ const Propostas = () => {
     if (status === "recusado") return <Badge variant="destructive" className="text-[10px]"><XCircle className="h-3 w-3 mr-1" />Ajuste solicitado</Badge>;
     return null;
   };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = Math.ceil(propostas.length / pageSize);
+  const paginatedPropostas = propostas.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
     load();
@@ -1123,7 +1130,7 @@ const Propostas = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {propostas.map((p) => (
+            {paginatedPropostas.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>{format(new Date(p.data_proposta + "T12:00:00"), "dd/MM/yyyy")}</TableCell>
                 <TableCell className="font-medium">{p.clientes?.nome || "-"}</TableCell>
@@ -1202,6 +1209,14 @@ const Propostas = () => {
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={propostas.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>

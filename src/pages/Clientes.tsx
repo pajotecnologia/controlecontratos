@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { maskCEP, maskCPFCNPJ, maskPhone, maskCPF } from "@/lib/masks";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type Cliente = {
   id: string;
@@ -99,19 +100,55 @@ const Clientes = () => {
     load();
   };
 
+  const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const filteredClientes = clientes.filter((c) => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return (
+      (c.nome || "").toLowerCase().includes(term) ||
+      (c.cpf_cnpj || "").toLowerCase().includes(term) ||
+      (c.email || "").toLowerCase().includes(term) ||
+      (c.telefone || "").toLowerCase().includes(term)
+    );
+  });
+
+  const totalPages = Math.ceil(filteredClientes.length / pageSize);
+  const paginatedClientes = filteredClientes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Clientes</h2>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm({ ...EMPTY_FORM }); } }}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" /> Novo Cliente</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full p-4 sm:p-6">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-bold">{editing ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
+          <p className="text-muted-foreground">Gerencie seus clientes cadastrados.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente..."
+              className="pl-8"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm({ ...EMPTY_FORM }); } }}>
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" /> Novo Cliente</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full p-4 sm:p-6">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold">{editing ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
               {/* Nome + CPF/CNPJ */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2 space-y-2">
@@ -204,7 +241,7 @@ const Clientes = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clientes.map((c) => (
+            {paginatedClientes.map((c) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.nome}</TableCell>
                 <TableCell>{c.telefone}</TableCell>
@@ -218,13 +255,21 @@ const Clientes = () => {
                 </TableCell>
               </TableRow>
             ))}
-            {clientes.length === 0 && (
+            {filteredClientes.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum cliente cadastrado.</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredClientes.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
     </div>
   );

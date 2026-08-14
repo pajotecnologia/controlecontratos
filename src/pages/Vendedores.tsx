@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { maskCPF, maskPhone } from "@/lib/masks";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type Vendedor = {
   id: string;
@@ -75,43 +76,80 @@ const Vendedores = () => {
     load();
   };
 
+  const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const filteredVendedores = vendedores.filter((v) => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return (
+      (v.nome || "").toLowerCase().includes(term) ||
+      (v.email || "").toLowerCase().includes(term) ||
+      (v.cpf || "").toLowerCase().includes(term) ||
+      (v.whatsapp || "").toLowerCase().includes(term)
+    );
+  });
+
+  const totalPages = Math.ceil(filteredVendedores.length / pageSize);
+  const paginatedVendedores = filteredVendedores.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Vendedores</h2>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm({ nome: "", whatsapp: "", email: "", cpf: "", comissao_padrao: "10" }); } }}>
-          <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" /> Novo Vendedor</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editing ? "Editar Vendedor" : "Novo Vendedor"}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Vendedores</h1>
+          <p className="text-muted-foreground">Gerencie sua equipe de vendas e comissões.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar vendedor..."
+              className="pl-8"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm({ nome: "", whatsapp: "", email: "", cpf: "", comissao_padrao: "10" }); } }}>
+            <DialogTrigger asChild>
+              <Button><Plus className="mr-2 h-4 w-4" /> Novo Vendedor</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>{editing ? "Editar Vendedor" : "Novo Vendedor"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Nome *</Label>
+                  <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome completo" />
+                </div>
+                <div className="space-y-2">
+                  <Label>WhatsApp</Label>
+                  <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: maskPhone(e.target.value) })} placeholder="(00) 00000-0000" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="vendedor@empresa.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>CPF</Label>
+                  <Input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: maskCPF(e.target.value) })} placeholder="000.000.000-00" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Comissão Padrão (%)</Label>
+                  <Input type="number" step="0.1" value={form.comissao_padrao} onChange={(e) => setForm({ ...form, comissao_padrao: e.target.value })} placeholder="5.0" />
+                </div>
+                <Button onClick={handleSave} className="w-full">Salvar</Button>
               </div>
-              <div className="space-y-2">
-                <Label>WhatsApp</Label>
-                <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: maskPhone(e.target.value) })} placeholder="(11) 99999-9999" />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="vendedor@email.com" />
-              </div>
-              <div className="space-y-2">
-                <Label>CPF</Label>
-                <Input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: maskCPF(e.target.value) })} placeholder="000.000.000-00" />
-              </div>
-              <div className="space-y-2">
-                <Label>Comissão Padrão (%)</Label>
-                <Input type="number" step="0.01" value={form.comissao_padrao} onChange={(e) => setForm({ ...form, comissao_padrao: e.target.value })} />
-              </div>
-              <Button onClick={handleSave} className="w-full">Salvar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="rounded-md border overflow-x-auto">
@@ -127,7 +165,7 @@ const Vendedores = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {vendedores.map((v) => (
+            {paginatedVendedores.map((v) => (
               <TableRow key={v.id}>
                 <TableCell className="font-medium">{v.nome}</TableCell>
                 <TableCell>{v.whatsapp}</TableCell>
@@ -142,13 +180,21 @@ const Vendedores = () => {
                 </TableCell>
               </TableRow>
             ))}
-            {vendedores.length === 0 && (
+            {filteredVendedores.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum vendedor cadastrado.</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredVendedores.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ import { ContasPagarTab } from "@/components/ContasPagarTab";
 import { FluxoCaixaTab } from "@/components/FluxoCaixaTab";
 import { CategoriasDespesaTab } from "@/components/CategoriasDespesaTab";
 import { SearchableClientSelect } from "@/components/SearchableClientSelect";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -216,6 +217,12 @@ const Financeiro = () => {
   const [reciboSendMensagem, setReciboSendMensagem] = useState("");
   const [agendarRecibo, setAgendarRecibo] = useState(false);
   const [dataAgendamentoRecibo, setDataAgendamentoRecibo] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = Math.ceil(contratos.length / pageSize);
+  const paginatedContratos = contratos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Parcelas
   const [qtdeParcelas, setQtdeParcelas] = useState(1);
@@ -1141,7 +1148,7 @@ const Financeiro = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contratos.map((c) => {
+            {paginatedContratos.map((c) => {
               const parcelas: Parcela[] = (c.parcelas || []).sort((a: any, b: any) => a.numero_parcela - b.numero_parcela);
               const pagas = parcelas.filter((p) => p.pago).length;
               return (
@@ -1408,6 +1415,14 @@ const Financeiro = () => {
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={contratos.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* Dialog de baixa de parcela */}

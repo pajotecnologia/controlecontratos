@@ -15,6 +15,7 @@ import { maskCPFCNPJ, maskPhone } from "@/lib/masks";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 type Fornecedor = {
   id: string;
@@ -238,6 +239,12 @@ export default function Fornecedores() {
     );
   });
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const totalAtivos = fornecedores.filter((f) => f.ativo).length;
   const totalInativos = fornecedores.filter((f) => !f.ativo).length;
 
@@ -325,7 +332,7 @@ export default function Fornecedores() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((item) => (
+              paginated.map((item) => (
                 <TableRow key={item.id} className={!item.ativo ? "opacity-60 bg-muted/20" : ""}>
                   <TableCell>
                     <div className="font-medium">{item.razao_social}</div>
@@ -401,6 +408,14 @@ export default function Fornecedores() {
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filtered.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* Modal Dialog Form */}

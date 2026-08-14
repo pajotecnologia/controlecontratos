@@ -19,6 +19,7 @@ import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { SearchableFornecedorSelect } from "@/components/SearchableFornecedorSelect";
+import { DataTablePagination } from "@/components/DataTablePagination";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -389,6 +390,12 @@ export function ContasPagarTab() {
     return matchesSearch && matchesMes && matchesStatus && matchesForn && matchesCat;
   });
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalPages = Math.ceil(filteredParcelas.length / pageSize);
+  const paginatedParcelas = filteredParcelas.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   // Calculos KPI do mês selecionado
   const totalAPagarMes = filteredParcelas.reduce((acc, p) => acc + Number(p.valor || 0), 0);
   const totalPagoMes = filteredParcelas.filter((p) => p.pago).reduce((acc, p) => acc + Number(p.valor || 0), 0);
@@ -554,7 +561,7 @@ export function ContasPagarTab() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredParcelas.map((p) => {
+              paginatedParcelas.map((p) => {
                 const isAtrasado = !p.pago && p.data_vencimento < hojeStr;
                 const forn = p.despesas?.fornecedores;
                 const cat = p.despesas?.categorias_despesa;
@@ -692,6 +699,14 @@ export function ContasPagarTab() {
             )}
           </TableBody>
         </Table>
+        <DataTablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredParcelas.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* Modal Dialog Criar/Editar Despesa */}
