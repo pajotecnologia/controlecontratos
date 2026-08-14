@@ -12,9 +12,9 @@ Sistema fullstack para gerenciamento de contratos, vendedores, clientes e comiss
 |--------|-----------|
 | Frontend | React 18 + TypeScript + Vite |
 | Estilo | Tailwind CSS + shadcn/ui |
-| Backend | Node.js + Express (PostgreSQL próprio, sem Supabase) |
+| Backend | Node.js + Express (PostgreSQL próprio, porta **3005**) |
 | Autenticação | JWT + bcrypt (tabela `users`, sem serviço externo) |
-| Banco de Dados | PostgreSQL 13+ (autorização no backend, sem RLS) |
+| Banco de Dados | PostgreSQL 13+ (banco: **`ctrlcontratos`**, sem RLS) |
 | Funções Serverless | Nenhuma — notificações via endpoints do próprio servidor |
 | Armazenamento | Disco da VPS (`server/uploads/`, servido em `/uploads`) |
 | Gráficos | Recharts |
