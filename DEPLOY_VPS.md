@@ -70,11 +70,11 @@ nano .env
 Ajuste o `.env` com os dados reais:
 
 ```
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/controle_comissoes"
+DATABASE_URL="postgresql://usuario:senha@localhost:5432/ctrlcontratos"
 DATABASE_SSL="false"
 JWT_SECRET="gere-uma-string-longa-e-aleatoria-aqui"
 PORT=3001
-PUBLIC_URL="https://seudominio.com"
+PUBLIC_URL="https://contratos.pajotech.com.br"
 ```
 
 > Gerar um JWT_SECRET seguro:
