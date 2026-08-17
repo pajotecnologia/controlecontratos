@@ -734,6 +734,13 @@ const Propostas = () => {
     }
 
     // =========================================================================
+    // MODELO 1: CLÁSSICO / CORPORATIVO TRADICIONAL (DEFAULT)
+    // =========================================================================
+    const rowsHtml = (p.proposta_itens || [])
+      .map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
           if (imgSrc.startsWith("/")) {
             imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
           }
