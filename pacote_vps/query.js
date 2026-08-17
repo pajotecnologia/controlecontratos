@@ -20,38 +20,53 @@ const READABLE_TABLES = new Set([
 const RELATIONS = {
   vendas: {
     clientes: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
+    cliente: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
     venda_vendedores: { table: "venda_vendedores", type: "many", local: "id", foreign: "venda_id" },
     parcelas: { table: "parcelas", type: "many", local: "id", foreign: "venda_id" },
   },
   venda_vendedores: {
     vendedores: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
+    vendedor: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
     vendas: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
+    venda: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
   },
   parcelas: {
     vendas: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
+    venda: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
+    contratos: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
+    contrato: { table: "vendas", type: "one", local: "venda_id", foreign: "id" },
   },
   contratos: {
     clientes: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
+    cliente: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
     company_settings: { table: "company_settings", type: "one", local: "company_id", foreign: "id" },
     modelos: { table: "modelos", type: "one", local: "modelo_id", foreign: "id" },
     vendedores: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
+    vendedor: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
+    parcelas: { table: "parcelas", type: "many", local: "id", foreign: "venda_id" },
   },
   propostas: {
     clientes: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
+    cliente: { table: "clientes", type: "one", local: "cliente_id", foreign: "id" },
     company_settings: { table: "company_settings", type: "one", local: "company_id", foreign: "id" },
     vendedores: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
+    vendedor: { table: "vendedores", type: "one", local: "vendedor_id", foreign: "id" },
     proposta_itens: { table: "proposta_itens", type: "many", local: "id", foreign: "proposta_id" },
   },
   proposta_itens: {
     propostas: { table: "propostas", type: "one", local: "proposta_id", foreign: "id" },
+    proposta: { table: "propostas", type: "one", local: "proposta_id", foreign: "id" },
   },
   despesas: {
     fornecedores: { table: "fornecedores", type: "one", local: "fornecedor_id", foreign: "id" },
+    fornecedor: { table: "fornecedores", type: "one", local: "fornecedor_id", foreign: "id" },
     categorias_despesa: { table: "categorias_despesa", type: "one", local: "categoria_id", foreign: "id" },
+    categoria_despesa: { table: "categorias_despesa", type: "one", local: "categoria_id", foreign: "id" },
     parcelas_despesas: { table: "parcelas_despesas", type: "many", local: "id", foreign: "despesa_id" },
   },
   parcelas_despesas: {
     despesas: { table: "despesas", type: "one", local: "despesa_id", foreign: "id" },
+    despesa: { table: "despesas", type: "one", local: "despesa_id", foreign: "id" },
   },
 };
 
