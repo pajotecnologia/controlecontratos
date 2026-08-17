@@ -1826,6 +1826,33 @@ async function initTables() {
   } catch (err) {
     console.log("[AVISO BD] migrations empresas/propostas:", err.message);
   }
+
+  try {
+    const adminEmail = "pajotecnologia@gmail.com";
+    const defaultHash = await hashPassword("123456");
+    const existing = await db.query("SELECT id FROM users WHERE email = $1", [adminEmail]);
+    let adminId;
+    if (existing.rows.length > 0) {
+      adminId = existing.rows[0].id;
+      await db.query("UPDATE users SET password_hash = $1 WHERE id = $2", [defaultHash, adminId]);
+    } else {
+      const { rows } = await db.query(
+        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
+        [adminEmail, defaultHash]
+      );
+      adminId = rows[0].id;
+      await db.query(
+        "INSERT INTO profiles (user_id, full_name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING",
+        [adminId, "Pajo Tecnologia"]
+      );
+    }
+    await db.query(
+      "INSERT INTO user_roles (user_id, role) VALUES ($1, 'admin') ON CONFLICT (user_id, role) DO NOTHING",
+      [adminId]
+    );
+  } catch (err) {
+    console.log("[AVISO BD] admin seed:", err.message);
+  }
 }
 initTables();
 
