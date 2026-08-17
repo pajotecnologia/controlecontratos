@@ -487,9 +487,18 @@ const Propostas = () => {
     const finalTotal = Number(p.total || 0);
 
     // =========================================================================
-    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
+    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo no topo centralizada, Sem bordas/caixas)
     // =========================================================================
     if (modelo === "moderno") {
+      let logoHtmlHeader = "";
+      if (comp.logo_url) {
+        let logoSrc = comp.logo_url;
+        if (logoSrc.startsWith("/")) {
+          logoSrc = `${window.location.protocol}//${window.location.host}${logoSrc}`;
+        }
+        logoHtmlHeader = `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; max-width: 260px; object-fit: contain; margin: 0 auto 8px auto; display: block;" />`;
+      }
+
       const rowsHtmlModerno = (p.proposta_itens || [])
         .map((item, idx) => {
           let imgHtml = "";
@@ -514,33 +523,46 @@ const Propostas = () => {
         .join("");
 
       return `
-        <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #1e293b; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px;">
-          <!-- Top Header: Apenas Logomarca e Tipo/Título da Proposta (Sem molduras/bordas) -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px;">
-            <div>
-              ${logoHtml || `<div style="font-size: 22px; font-weight: 800; color: #0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+        <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #1e293b; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 40px 30px; border: none; box-shadow: none;">
+          <!-- 1. LOGOMARCA NO TOPO CENTRALIZADA -->
+          <div style="text-align: center; margin-bottom: 20px;">
+            ${logoHtmlHeader || `<div style="font-size: 26px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">${comp.name || "LOGOMARCA"}</div>`}
+            <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+              ${comp.name ? `<strong style="color: #0f172a;">${comp.name}</strong>` : ""}
+              ${comp.cnpj ? ` • CNPJ: ${comp.cnpj}` : ""}
+              ${compEndereco ? ` • ${compEndereco}` : ""}
             </div>
-            <div style="text-align: right;">
-              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb; font-weight: 800;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
-              <h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 4px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
-              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Data: ${dataEmissaoFormatada}</div>
+            ${compContato ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${compContato}</div>` : ""}
+          </div>
+
+          <!-- Divisor sutil sem moldura -->
+          <div style="height: 1px; background: #e2e8f0; margin: 20px 0 28px 0;"></div>
+
+          <!-- 2. TÍTULO E TIPO DA PROPOSTA -->
+          <div style="text-align: center; margin-bottom: 30px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #2563eb;">
+              ${p.tipo_proposta || "PROPOSTA COMERCIAL"}
+            </div>
+            <h1 style="font-size: 24px; font-weight: 800; color: #0f172a; margin: 4px 0 2px 0;">
+              ${p.titulo || "PROPOSTA COMERCIAL"}
+            </h1>
+            <div style="font-size: 12px; color: #64748b;">Data de Emissão: ${dataEmissaoFormatada}</div>
+          </div>
+
+          <!-- 3. DADOS DO CLIENTE (Texto limpo, sem moldura ou caixa de fundo) -->
+          <div style="margin-bottom: 32px; font-size: 13px;">
+            <div style="font-weight: 800; font-size: 11px; color: #2563eb; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;">Informações do Cliente</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; line-height: 1.6;">
+              <div><span style="color: #64748b;">Cliente:</span> <strong style="color: #0f172a;">${cli.nome || "-"}</strong></div>
+              <div><span style="color: #64748b;">CPF/CNPJ:</span> <strong style="color: #0f172a;">${cli.cpf_cnpj || "-"}</strong></div>
+              <div><span style="color: #64748b;">Telefone:</span> <strong style="color: #0f172a;">${cli.telefone || "-"}</strong></div>
+              <div><span style="color: #64748b;">E-mail:</span> <strong style="color: #0f172a;">${cli.email || "-"}</strong></div>
+              <div style="grid-column: span 2;"><span style="color: #64748b;">Endereço:</span> <strong style="color: #0f172a;">${cliAddressFormat(cliEndereco)}</strong></div>
             </div>
           </div>
 
-          <!-- Dados do Cliente (Sem borda ou fundo) -->
-          <div style="margin-bottom: 35px; font-size: 13px;">
-            <div style="font-weight: 800; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Informações do Cliente</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div><span style="color: #64748b;">Cliente:</span> <strong>${cli.nome || "-"}</strong></div>
-              <div><span style="color: #64748b;">CPF/CNPJ:</span> <strong>${cli.cpf_cnpj || "-"}</strong></div>
-              <div><span style="color: #64748b;">Telefone:</span> <strong>${cli.telefone || "-"}</strong></div>
-              <div><span style="color: #64748b;">E-mail:</span> <strong>${cli.email || "-"}</strong></div>
-              <div style="grid-column: span 2;"><span style="color: #64748b;">Endereço:</span> <strong>${cliAddressFormat(cliEndereco)}</strong></div>
-            </div>
-          </div>
-
-          <!-- Tabela sem bordas/molduras -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px;">
+          <!-- 4. TABELA DE ITENS (Sem moldura nem bordas laterais) -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; border: none;">
             <thead>
               <tr style="border-bottom: 2px solid #0f172a; color: #0f172a;">
                 <th style="padding: 10px 4px; text-align: left; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">Descrição</th>
@@ -554,46 +576,44 @@ const Propostas = () => {
             </tbody>
           </table>
 
-          <!-- Valor Total Limpo (Sem caixa/borda) -->
+          <!-- 5. VALOR TOTAL (Sem molduras/caixas) -->
           <div style="display: flex; justify-content: flex-end; margin-bottom: 35px; text-align: right;">
             <div>
-              ${desc > 0 ? `<div style="font-size: 12px; color: #dc2626; margin-bottom: 4px;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
-              <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Valor Total</div>
-              <div style="font-size: 24px; font-weight: 900; color: #0f172a;">R$ ${formatCurrency(finalTotal)}</div>
+              ${desc > 0 ? `<div style="font-size: 12px; color: #dc2626; margin-bottom: 4px; font-weight: 600;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
+              <div style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">VALOR TOTAL</div>
+              <div style="font-size: 26px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">R$ ${formatCurrency(finalTotal)}</div>
             </div>
           </div>
 
           ${p.observacoes ? `
+          <!-- 6. OBSERVAÇÕES (Sem bordas) -->
           <div style="margin-bottom: 40px; font-size: 13px;">
             <div style="font-weight: 800; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Observações</div>
             <div style="white-space: pre-wrap; color: #475569; line-height: 1.5;">${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
           </div>
           ` : ""}
 
-          <!-- Assinaturas Limpas (Sem caixas) -->
+          <!-- 7. ASSINATURAS (Linhas limpas sem caixas) -->
           <div style="margin-top: 50px; font-size: 12px;">
-            <div style="display: flex; justify-content: space-around; text-align: center; margin-bottom: 50px;">
+            <div style="display: flex; justify-content: space-around; text-align: center; margin-bottom: 30px;">
               <div style="width: 250px;">
                 ${comp.assinatura_imagem
                   ? `<img src="${comp.assinatura_imagem}" style="max-height:55px;display:block;margin:0 auto 4px;" />`
-                  : `<div style="border-top: 1px solid #94a3b8; margin-top: 40px; margin-bottom: 6px;"></div>`}
+                  : `<div style="border-top: 1px solid #cbd5e1; margin-top: 40px; margin-bottom: 6px;"></div>`}
                 <strong style="color: #0f172a; display: block;">${comp.name || "Assinatura Empresa"}</strong>
                 <div style="font-size: 10px; color: #64748b;">${comp.nome_responsavel || ""}</div>
               </div>
               <div style="width: 250px;">
-                <div style="border-top: 1px solid #94a3b8; margin-top: 40px; margin-bottom: 6px;"></div>
+                <div style="border-top: 1px solid #cbd5e1; margin-top: 40px; margin-bottom: 6px;"></div>
                 <strong style="color: #0f172a; display: block;">${cli.nome || "Assinatura Cliente"}</strong>
                 <div style="font-size: 10px; color: #64748b;">Aceite do Cliente</div>
               </div>
             </div>
           </div>
 
-          <!-- Rodapé Completo com os Dados da Empresa -->
-          <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-            <div style="font-weight: 700; color: #0f172a; font-size: 12px; margin-bottom: 2px;">${comp.name || "Sua Empresa"}</div>
-            <div>${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}</div>
-            <div>${compContato}</div>
-            <div style="font-style: italic; margin-top: 4px; font-size: 10px;">Emitido em ${dataAssinaturaFormatada}.</div>
+          <!-- Rodapé Limpo -->
+          <div style="margin-top: 30px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 10px; color: #94a3b8; font-style: italic;">
+            Emitido em ${dataAssinaturaFormatada}.
           </div>
         </div>
       `;
@@ -967,7 +987,7 @@ const Propostas = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="classico">🏢 Modelo 1: Clássico / Corporativo</SelectItem>
-                      <SelectItem value="moderno">🚀 Modelo 2: Moderno / Tech</SelectItem>
+                      <SelectItem value="moderno">🚀 Modelo 2: Sem Moldura (Logo no Topo)</SelectItem>
                       <SelectItem value="elegante">👑 Modelo 3: Elegante / Executivo</SelectItem>
                     </SelectContent>
                   </Select>

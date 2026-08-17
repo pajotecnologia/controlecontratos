@@ -1175,8 +1175,13 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
     const modelo = p.modelo_proposta || "classico";
     let html = "";
 
-    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo/Tipo no topo, Dados da empresa no Rodapé, Sem bordas)
+    // MODELO 2: MINIMALISTA SEM MOLDURA (Logo no topo centralizada, Sem bordas/caixas)
     if (modelo === "moderno") {
+      let logoHtmlHeader = "";
+      if (logoUrl) {
+        logoHtmlHeader = `<img src="${logoUrl}" alt="Logo" style="max-height:90px;max-width:260px;object-fit:contain;margin:0 auto 8px auto;display:block;" />`;
+      }
+
       const rowsHtmlModerno = itens.map((item, idx) => {
         let imgHtml = "";
         if (item.imagem_url) {
@@ -1195,28 +1200,33 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
         </tr>`;
       }).join("");
 
-      html = `<div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;max-width:800px;margin:0 auto;background:#fff;padding:30px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:35px;">
-          <div>
-            ${empresaLogo || `<div style="font-size:22px;font-weight:800;color:#0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+      html = `<div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;max-width:800px;margin:0 auto;background:#fff;padding:40px 30px;border:none;box-shadow:none;">
+        <div style="text-align:center;margin-bottom:20px;">
+          ${logoHtmlHeader || `<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;">${comp.name || "LOGOMARCA"}</div>`}
+          <div style="font-size:12px;color:#64748b;margin-top:6px;">
+            ${comp.name ? `<strong style="color:#0f172a;">${comp.name}</strong>` : ""}
+            ${comp.cnpj ? ` • CNPJ: ${comp.cnpj}` : ""}
+            ${compEndereco ? ` • ${compEndereco}` : ""}
           </div>
-          <div style="text-align:right;">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#2563eb;font-weight:800;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
-            <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin:4px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
-            <div style="font-size:12px;color:#64748b;margin-top:2px;">Data: ${dataEmissaoFormatada}</div>
+          ${compContato ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${compContato}</div>` : ""}
+        </div>
+        <div style="height:1px;background:#e2e8f0;margin:20px 0 28px 0;"></div>
+        <div style="text-align:center;margin-bottom:30px;">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#2563eb;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
+          <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:4px 0 2px 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+          <div style="font-size:12px;color:#64748b;">Data de Emissão: ${dataEmissaoFormatada}</div>
+        </div>
+        <div style="margin-bottom:32px;font-size:13px;">
+          <div style="font-weight:800;font-size:11px;color:#2563eb;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Informações do Cliente</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;line-height:1.6;">
+            <div><span style="color:#64748b;">Cliente:</span> <strong style="color:#0f172a;">${p.nome || "-"}</strong></div>
+            <div><span style="color:#64748b;">CPF/CNPJ:</span> <strong style="color:#0f172a;">${p.cpf_cnpj || "-"}</strong></div>
+            <div><span style="color:#64748b;">Telefone:</span> <strong style="color:#0f172a;">${p.telefone || "-"}</strong></div>
+            <div><span style="color:#64748b;">E-mail:</span> <strong style="color:#0f172a;">${p.email || "-"}</strong></div>
+            <div style="grid-column:span 2;"><span style="color:#64748b;">Endereço:</span> <strong style="color:#0f172a;">${p.endereco || "-"}</strong></div>
           </div>
         </div>
-        <div style="margin-bottom:35px;font-size:13px;">
-          <div style="font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Informações do Cliente</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div><span style="color:#64748b;">Cliente:</span> <strong>${p.nome || "-"}</strong></div>
-            <div><span style="color:#64748b;">CPF/CNPJ:</span> <strong>${p.cpf_cnpj || "-"}</strong></div>
-            <div><span style="color:#64748b;">Telefone:</span> <strong>${p.telefone || "-"}</strong></div>
-            <div><span style="color:#64748b;">E-mail:</span> <strong>${p.email || "-"}</strong></div>
-            <div style="grid-column:span 2;"><span style="color:#64748b;">Endereço:</span> <strong>${p.endereco || "-"}</strong></div>
-          </div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:30px;font-size:13px;">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:30px;font-size:13px;border:none;">
           <thead><tr style="border-bottom:2px solid #0f172a;color:#0f172a;">
             <th style="padding:10px 4px;text-align:left;font-weight:800;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Descrição</th>
             <th style="padding:10px 4px;text-align:center;font-weight:800;text-transform:uppercase;font-size:11px;width:60px;">Qtd</th>
@@ -1227,20 +1237,17 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
         </table>
         <div style="display:flex;justify-content:flex-end;margin-bottom:35px;text-align:right;">
           <div>
-            ${desc > 0 ? `<div style="font-size:12px;color:#dc2626;margin-bottom:4px;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
-            <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Valor Total</div>
-            <div style="font-size:24px;font-weight:900;color:#0f172a;">R$ ${fmtMoeda(total)}</div>
+            ${desc > 0 ? `<div style="font-size:12px;color:#dc2626;margin-bottom:4px;font-weight:600;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:800;letter-spacing:1px;">VALOR TOTAL</div>
+            <div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;">R$ ${fmtMoeda(total)}</div>
           </div>
         </div>
         ${p.observacoes ? `<div style="margin-bottom:40px;font-size:13px;">
           <div style="font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Observações</div>
           <div style="white-space:pre-wrap;color:#475569;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
         </div>` : ""}
-        <div style="margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;font-size:11px;color:#64748b;line-height:1.6;">
-          <div style="font-weight:700;color:#0f172a;font-size:12px;margin-bottom:2px;">${comp.name || "Sua Empresa"}</div>
-          <div>${comp.cnpj ? `CNPJ: ${comp.cnpj}` : ""} ${compEndereco ? ` • ${compEndereco}` : ""}</div>
-          <div>${compContato}</div>
-          <div style="font-style:italic;margin-top:4px;font-size:10px;">Emitido em ${dataEmissaoFormatada}.</div>
+        <div style="margin-top:30px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8;font-style:italic;">
+          Emitido em ${dataEmissaoFormatada}.
         </div>
       </div>`;
     } else if (modelo === "elegante") {
