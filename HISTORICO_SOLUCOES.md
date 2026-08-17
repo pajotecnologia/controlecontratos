@@ -79,3 +79,20 @@ Para evitar arquivos `.js` obsoletos servidos em cache:
 ```bash
 rm -rf /tmp/repo_temp && git clone https://github.com/pajotecnologia/controlecontratos.git /tmp/repo_temp && cp -rf /tmp/repo_temp/* /www/wwwroot/contratos.pajotech.com.br/ && cp -rf /tmp/repo_temp/server/* /www/wwwroot/contratos.pajotech.com.br/ && rm -rf /tmp/repo_temp && cd /www/wwwroot/contratos.pajotech.com.br && pm2 restart all
 ```
+
+---
+
+## 5. Processos de Qualidade e Prevenção de Erros de Build
+
+Para evitar falhas na compilação ou atualizações que não refletem no ambiente local/VPS, foram estabelecidas as seguintes regras rígidas:
+
+1. **Validação Obrigatória do Build**:
+   - Sempre executar `npx vite build` e checar o terminal buscando por `✓ built in X.XXs` antes de efetuar cópia de ativos ou commits.
+   - Jamais ignorar saídas do tipo `Transform failed` ou `ERROR`.
+
+2. **Isolamento de Ambientes Dev vs Prod**:
+   - `index.html` da raiz aponta sempre para `/src/main.tsx` (desenvolvimento local Vite HMR).
+   - Artefatos de produção em `dist/` são copiados estritamente para `public/` e `server/public/`.
+
+3. **Arquivos de Diretrizes do Agente**:
+   - Configurados os arquivos `.agents/rules/build_and_deploy_rules.md` e `GEMINI.md` para garantir que a IA siga sempre este rigoroso processo em todas as interações.
