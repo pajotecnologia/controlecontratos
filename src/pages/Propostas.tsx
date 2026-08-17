@@ -704,7 +704,6 @@ const Propostas = () => {
             </div>
             <div style="font-size: 22px; font-weight: bold; color: #f59e0b; font-family: Georgia, serif;">R$ ${formatCurrency(finalTotal)}</div>
           </div>
-
           ${p.observacoes ? `
           <div style="border-left: 3px solid #d97706; padding: 14px 18px; background: #fdfbf7; margin-bottom: 32px; font-size: 13px; font-family: Arial, sans-serif;">
             <div style="font-weight: bold; color: #92400e; margin-bottom: 4px; font-size: 12px; text-transform: uppercase;">Observações</div>
@@ -719,13 +718,13 @@ const Propostas = () => {
               <div style="width: 250px;">
                 ${comp.assinatura_imagem
                   ? `<img src="${comp.assinatura_imagem}" style="max-height:55px;display:block;margin:0 auto 4px;" />`
-                  : `<div style="border-top: 1px solid #0f172a; margin-bottom: 6px;"></div>`}
-                <strong style="color: #0f172a; display: block;">${comp.name || "Assinatura da Empresa"}</strong>
+                  : `<div style="border-top: 1px solid #4b5563; margin-top: 40px; margin-bottom: 6px;"></div>`}
+                <strong style="color: #0f172a; display: block;">${comp.name || "Assinatura Empresa"}</strong>
                 <div style="font-size: 10px; color: #6b7280;">${comp.nome_responsavel || ""}</div>
               </div>
               <div style="width: 250px;">
-                <div style="border-top: 1px solid #0f172a; margin-bottom: 6px;"></div>
-                <strong style="color: #0f172a; display: block;">${cli.nome || "Assinatura do Cliente"}</strong>
+                <div style="border-top: 1px solid #4b5563; margin-top: 40px; margin-bottom: 6px;"></div>
+                <strong style="color: #0f172a; display: block;">${cli.nome || "Assinatura Cliente"}</strong>
                 <div style="font-size: 10px; color: #6b7280;">Aceite do Cliente</div>
               </div>
             </div>
@@ -735,13 +734,6 @@ const Propostas = () => {
     }
 
     // =========================================================================
-    // MODELO 1: CLÁSSICO / CORPORATIVO (Corporativo Slate Neutro Tradicional)
-    // =========================================================================
-    const rowsHtml = (p.proposta_itens || [])
-      .map((item, idx) => {
-        let imgHtml = "";
-        if (item.imagem_url) {
-          let imgSrc = item.imagem_url;
           if (imgSrc.startsWith("/")) {
             imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
           }
@@ -986,9 +978,11 @@ const Propostas = () => {
                       <SelectValue placeholder="Selecione o modelo..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="classico">🏢 Modelo 1: Clássico / Corporativo</SelectItem>
+                      <SelectItem value="classico">🏢 Modelo 1: Corporativo Tradicional</SelectItem>
                       <SelectItem value="moderno">🚀 Modelo 2: Sem Moldura (Logo no Topo)</SelectItem>
-                      <SelectItem value="elegante">👑 Modelo 3: Elegante / Executivo</SelectItem>
+                      <SelectItem value="elegante">👑 Modelo 3: Executivo / Serifado Elegante</SelectItem>
+                      <SelectItem value="compacto">📑 Modelo 4: Fatura / Orçamento Compacto</SelectItem>
+                      <SelectItem value="lateral">📊 Modelo 5: Sidebar Lateral Moderna</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

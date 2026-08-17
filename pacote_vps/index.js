@@ -1314,6 +1314,143 @@ app.post("/api/public/assinar-proposta/:token/preview", async (req, res) => {
           <div style="white-space:pre-wrap;color:#4b5563;line-height:1.5;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
         </div>` : ""}
       </div>`;
+    } else if (modelo === "compacto") {
+      // MODELO 4: COMPACTO / FATURA (Duas colunas topo, tabela densa de 1 página)
+      const rowsHtmlCompacto = itens.map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
+          if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
+          imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:60px;max-width:100px;object-fit:contain;margin-top:4px;" />`;
+        }
+        return `<tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:6px 4px;text-align:left;">
+            <span style="color:#64748b;font-size:11px;">#${idx + 1}</span>
+            <strong style="color:#0f172a;margin-left:4px;">${item.descricao}</strong>${imgHtml}
+          </td>
+          <td style="padding:6px 4px;text-align:center;color:#475569;">${item.quantidade}</td>
+          <td style="padding:6px 4px;text-align:right;color:#475569;">R$ ${fmtMoeda(item.valor_unitario)}</td>
+          <td style="padding:6px 4px;text-align:right;font-weight:700;color:#0f172a;">R$ ${fmtMoeda(item.total)}</td>
+        </tr>`;
+      }).join("");
+
+      html = `<div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a;max-width:800px;margin:0 auto;background:#ffffff;padding:24px;">
+        <div style="display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
+          <div style="flex:1;">
+            ${empresaLogo || `<div style="font-size:20px;font-weight:900;color:#0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+            <div style="font-size:11px;color:#64748b;margin-top:6px;line-height:1.4;">
+              ${comp.name ? `<strong style="color:#0f172a;">${comp.name}</strong><br/>` : ""}
+              ${comp.cnpj ? `CNPJ: ${comp.cnpj}<br/>` : ""}
+              ${compEndereco ? `${compEndereco}<br/>` : ""}
+              ${compContato || ""}
+            </div>
+          </div>
+          <div style="flex:1;text-align:right;font-size:11px;">
+            <div style="font-size:12px;font-weight:900;color:#2563eb;text-transform:uppercase;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
+            <div style="font-size:18px;font-weight:800;color:#0f172a;margin:2px 0;">${p.titulo || "PROPOSTA"}</div>
+            <div style="color:#64748b;margin-bottom:8px;">Emissão: ${dataEmissaoFormatada}</div>
+            <div style="border-top:1px solid #e2e8f0;padding-top:6px;margin-top:6px;text-align:right;line-height:1.4;">
+              <span style="color:#64748b;">PARA:</span> <strong style="color:#0f172a;">${p.nome || "-"}</strong><br/>
+              <span style="color:#64748b;">CPF/CNPJ:</span> <strong>${p.cpf_cnpj || "-"}</strong><br/>
+              <span style="color:#64748b;">TEL:</span> <strong>${p.telefone || "-"}</strong>
+            </div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;">
+          <thead>
+            <tr style="background:#f8fafc;color:#0f172a;border-bottom:1px solid #cbd5e1;">
+              <th style="padding:8px 4px;text-align:left;font-weight:800;text-transform:uppercase;font-size:10px;">Item / Descrição</th>
+              <th style="padding:8px 4px;text-align:center;font-weight:800;text-transform:uppercase;font-size:10px;width:50px;">Qtd</th>
+              <th style="padding:8px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:10px;width:100px;">Unitário</th>
+              <th style="padding:8px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:10px;width:110px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtmlCompacto}</tbody>
+        </table>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:20px;text-align:right;font-size:12px;">
+          <div style="width:220px;border-top:1px solid #0f172a;padding-top:6px;">
+            ${desc > 0 ? `<div style="color:#dc2626;margin-bottom:2px;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
+            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;color:#0f172a;">
+              <span>TOTAL:</span>
+              <span>R$ ${fmtMoeda(total)}</span>
+            </div>
+          </div>
+        </div>
+        ${p.observacoes ? `<div style="margin-bottom:24px;font-size:11px;color:#475569;border-top:1px solid #e2e8f0;padding-top:8px;">
+          <strong>Observações:</strong> ${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}
+        </div>` : ""}
+      </div>`;
+    } else if (modelo === "lateral") {
+      // MODELO 5: LATERAL / SIDEBAR (Split layout com coluna lateral moderna)
+      const rowsHtmlLateral = itens.map((item, idx) => {
+        let imgHtml = "";
+        if (item.imagem_url) {
+          let imgSrc = item.imagem_url;
+          if (imgSrc.startsWith("/")) imgSrc = `${req.protocol}://${req.get("host")}${imgSrc}`;
+          imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height:70px;max-width:110px;object-fit:contain;margin-top:4px;" />`;
+        }
+        return `<tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:10px 4px;text-align:left;">
+            <strong style="color:#0f172a;font-size:12px;">${item.descricao}</strong>${imgHtml}
+          </td>
+          <td style="padding:10px 4px;text-align:center;color:#475569;font-size:12px;">${item.quantidade}</td>
+          <td style="padding:10px 4px;text-align:right;color:#475569;font-size:12px;">R$ ${fmtMoeda(item.valor_unitario)}</td>
+          <td style="padding:10px 4px;text-align:right;font-weight:700;color:#0f172a;font-size:12px;">R$ ${fmtMoeda(item.total)}</td>
+        </tr>`;
+      }).join("");
+
+      html = `<div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;max-width:800px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;display:flex;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+        <div style="width:240px;background:#f8fafc;border-right:1px solid #e2e8f0;padding:28px 20px;box-sizing:border-box;">
+          <div style="margin-bottom:24px;">
+            ${empresaLogo || `<div style="font-size:20px;font-weight:900;color:#0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+          </div>
+          <div style="font-size:11px;color:#64748b;line-height:1.5;margin-bottom:24px;">
+            <strong style="color:#0f172a;font-size:12px;display:block;margin-bottom:4px;">${comp.name || "Sua Empresa"}</strong>
+            ${comp.cnpj ? `CNPJ: ${comp.cnpj}<br/>` : ""}
+            ${compEndereco ? `${compEndereco}<br/>` : ""}
+            ${compContato || ""}
+          </div>
+          <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:11px;">
+            <div style="color:#2563eb;font-weight:800;text-transform:uppercase;font-size:10px;letter-spacing:0.5px;">Resumo</div>
+            <div style="margin-top:6px;color:#64748b;">Emissão:</div>
+            <div style="font-weight:700;color:#0f172a;">${dataEmissaoFormatada}</div>
+            ${p.tipo_proposta ? `<div style="margin-top:6px;color:#64748b;">Tipo:</div><div style="font-weight:700;color:#0f172a;">${p.tipo_proposta}</div>` : ""}
+          </div>
+        </div>
+        <div style="flex:1;padding:28px 24px;box-sizing:border-box;">
+          <div style="margin-bottom:24px;">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#2563eb;">PROPOSTA COMERCIAL</div>
+            <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin:4px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+          </div>
+          <div style="margin-bottom:24px;font-size:12px;border-left:3px solid #2563eb;padding-left:12px;background:#f8fafc;padding-top:8px;padding-bottom:8px;">
+            <div style="font-weight:700;color:#0f172a;">${p.nome || "-"}</div>
+            <div style="color:#64748b;font-size:11px;">${p.cpf_cnpj ? `CPF/CNPJ: ${p.cpf_cnpj} • ` : ""}${p.telefone || ""}</div>
+            <div style="color:#64748b;font-size:11px;">${p.endereco || "-"}</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;font-size:12px;">
+            <thead>
+              <tr style="border-bottom:2px solid #2563eb;color:#2563eb;">
+                <th style="padding:8px 4px;text-align:left;font-weight:800;text-transform:uppercase;font-size:10px;">Item</th>
+                <th style="padding:8px 4px;text-align:center;font-weight:800;text-transform:uppercase;font-size:10px;width:45px;">Qtd</th>
+                <th style="padding:8px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:10px;width:90px;">Unit.</th>
+                <th style="padding:8px 4px;text-align:right;font-weight:800;text-transform:uppercase;font-size:10px;width:95px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtmlLateral}</tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:10px 16px;border-radius:6px;text-align:right;">
+              ${desc > 0 ? `<div style="font-size:11px;color:#dc2626;">Desconto: - R$ ${fmtMoeda(desc)}</div>` : ""}
+              <div style="font-size:10px;color:#1e40af;font-weight:800;text-transform:uppercase;">TOTAL</div>
+              <div style="font-size:22px;font-weight:900;color:#1e3a8a;">R$ ${fmtMoeda(total)}</div>
+            </div>
+          </div>
+          ${p.observacoes ? `<div style="margin-bottom:28px;font-size:11px;">
+            <strong style="color:#0f172a;display:block;margin-bottom:4px;">Observações:</strong>
+            <div style="white-space:pre-wrap;color:#475569;line-height:1.4;">${String(p.observacoes).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+          </div>` : ""}
+        </div>
+      </div>`;
     } else {
       // MODELO 1: CLÁSSICO / CORPORATIVO (Default)
       const rowsHtml = itens.map((item, idx) => {

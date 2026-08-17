@@ -21,22 +21,34 @@
 
 ---
 
-## 2. Modelos de Proposta Comercial (`modelo_proposta`)
+## 2. Catálogo dos 5 Modelos de Proposta Comercial (`modelo_proposta`)
 
-### Modelo 2: Sem Moldura (Logo no Topo)
-- **Estrutura Visual**:
-  1. Logomarca centralizada no topo da folha com endereço e dados da empresa emissora.
-  2. Divisor horizontal sutil.
-  3. Tipo da Proposta e Título Comercial centralizados.
-  4. Data de Emissão.
-  5. Informações do Cliente (em texto limpo, sem moldura ou caixa de fundo).
-  6. Tabela de Itens (apenas com linhas horizontais, sem bordas laterais ou caixas).
-  7. Valor Total alinhado à direita em negrito.
-  8. Bloco de Observações.
-  9. Linhas de Assinatura (Empresa e Cliente).
-- **Arquivos Sincronizados**:
-  - `src/pages/Propostas.tsx` (Visualização / PDF local / Impressão).
-  - `server/index.js` (Rota pública de assinatura de proposta `/api/public/assinar-proposta/:token/preview`).
+Todos os modelos são leves, sem enfeites excessivos ou pesados, e visualmente 100% distintos entre si:
+
+1. **`classico` — Modelo 1: Corporativo Tradicional**
+   - **Cabeçalho**: Banner topo escuro (`background: #0f172a`), logo à esquerda e título comercial à direita em texto branco.
+   - **Estilo**: Cartão de informações do cliente com fundo neutro e tabela completa.
+
+2. **`moderno` — Modelo 2: Sem Moldura (Logo no Topo)**
+   - **Cabeçalho**: Logomarca centralizada no topo com endereço e dados da empresa emissora logo abaixo.
+   - **Estilo**: 100% sem moldura, sem caixas de contorno, divisor sutil de 1px e linhas de itens minimalistas.
+
+3. **`elegante` — Modelo 3: Executivo / Serifado Elegante**
+   - **Tipografia**: Georgia serif elegante (`font-family: Georgia, serif`).
+   - **Estilo**: Barra fina dourada no topo (`border-top: 4px solid #d97706`), cabeçalho centralizado e totais com destaque em tom âmbar/ouro.
+
+4. **`compacto` — Modelo 4: Fatura / Orçamento Compacto**
+   - **Cabeçalho**: Layout em 2 colunas no topo (Empresa à esquerda vs Cliente/Data/Metadata à direita).
+   - **Estilo**: Tabela de alta densidade (`padding: 6px 4px`), texto compacto de 12px, subtotal e total direto no rodapé da tabela. Ideal para cotações rápidas de 1 página.
+
+5. **`lateral` — Modelo 5: Sidebar Lateral Moderna**
+   - **Cabeçalho & Layout**: Split layout moderno em duas colunas:
+     - **Coluna Lateral (Esquerda - 240px, fundo `#f8fafc`)**: Logo, Dados da Empresa Emissora e resumo do documento.
+     - **Área Principal (Direita)**: Título, dados do cliente com destaque em barra azul, tabela de itens e badge azul de valor total.
+
+### Arquivos Sincronizados
+- `src/pages/Propostas.tsx` (Visualização / PDF local / Impressão).
+- `server/index.js` (Rota pública de assinatura de proposta `/api/public/assinar-proposta/:token/preview`).
 
 ---
 
