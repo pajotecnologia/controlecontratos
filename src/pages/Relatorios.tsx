@@ -112,7 +112,7 @@ export default function Relatorios() {
     try {
       const { data, error } = await supabase
         .from("parcelas")
-        .select("*, contratos(*, clientes(*))")
+        .select("*, vendas(*, clientes(*))")
         .order("data_vencimento", { ascending: true });
 
       if (error) throw error;
@@ -129,7 +129,7 @@ export default function Relatorios() {
 
       // Filtro por Cliente Específico
       if (recClienteId) {
-        list = list.filter((p: any) => p.contratos?.cliente_id === recClienteId);
+        list = list.filter((p: any) => (p.vendas?.cliente_id || p.contratos?.cliente_id) === recClienteId);
       }
 
       // Filtro por Situação
@@ -300,7 +300,7 @@ export default function Relatorios() {
 
       tableBodyHtml = recParcelas
         .map((p) => {
-          const nomeCliente = p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente";
+          const nomeCliente = p.vendas?.clientes?.nome || p.vendas?.cliente || p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente";
           const isAtrasado = !p.pago && p.data_vencimento < hojeStr;
           const statusTxt = p.pago ? "Recebido" : isAtrasado ? "Atrasado" : "Pendente";
           const statusCor = p.pago ? "#16a34a" : isAtrasado ? "#dc2626" : "#d97706";
@@ -478,8 +478,8 @@ export default function Relatorios() {
       filename = `relatorio-contas-a-receber-${hojeStr}.csv`;
       header = ["Cliente", "CPF/CNPJ", "Parcela", "Vencimento", "Data Pagamento", "Valor (R$)", "Situacao"];
       linhas = recParcelas.map((p) => [
-        p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente",
-        p.contratos?.clientes?.cpf_cnpj || "",
+        p.vendas?.clientes?.nome || p.vendas?.cliente || p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente",
+        p.vendas?.clientes?.cpf_cnpj || p.contratos?.clientes?.cpf_cnpj || "",
         `${p.numero_parcela || 1}ª`,
         dataBr(p.data_vencimento),
         dataBr(p.data_pagamento),
@@ -695,8 +695,8 @@ export default function Relatorios() {
                   </TableRow>
                 ) : (
                   recPaginated.map((p) => {
-                    const nomeCliente = p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente";
-                    const cpfCnpj = p.contratos?.clientes?.cpf_cnpj;
+                    const nomeCliente = p.vendas?.clientes?.nome || p.vendas?.cliente || p.contratos?.clientes?.nome || p.contratos?.cliente || "Cliente";
+                    const cpfCnpj = p.vendas?.clientes?.cpf_cnpj || p.contratos?.clientes?.cpf_cnpj;
                     const isAtrasado = !p.pago && p.data_vencimento < hojeStr;
 
                     return (

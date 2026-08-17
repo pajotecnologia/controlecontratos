@@ -13,6 +13,6 @@ Get-ChildItem -Path $source -Exclude "node_modules", "uploads", ".env" | Copy-It
 if (Test-Path $zipFile) {
     Remove-Item -Force $zipFile
 }
-Compress-Archive -Path "$dest\*" -DestinationPath $zipFile -Force
+tar.exe -caf $zipFile -C $dest .
 
 Write-Host "Pacote VPS gerado com sucesso!"
