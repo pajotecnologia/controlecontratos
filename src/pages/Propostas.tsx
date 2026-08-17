@@ -734,6 +734,214 @@ const Propostas = () => {
     }
 
     // =========================================================================
+    // MODELO 4: COMPACTO / FATURA (Duas colunas topo, alta densidade)
+    // =========================================================================
+    if (modelo === "compacto") {
+      const rowsHtmlCompacto = (p.proposta_itens || [])
+        .map((item, idx) => {
+          let imgHtml = "";
+          if (item.imagem_url) {
+            let imgSrc = item.imagem_url;
+            if (imgSrc.startsWith("/")) imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
+            imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height: 50px; max-width: 90px; object-fit: contain; margin-top: 2px;" />`;
+          }
+          return `
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 6px 4px; text-align: left;">
+              <span style="color: #64748b; font-size: 11px;">#${idx + 1}</span>
+              <strong style="color: #0f172a; margin-left: 4px; font-size: 12px;">${item.descricao}</strong>
+              ${imgHtml}
+            </td>
+            <td style="padding: 6px 4px; text-align: center; color: #475569; font-size: 12px;">${item.quantidade}</td>
+            <td style="padding: 6px 4px; text-align: right; color: #475569; font-size: 12px;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
+            <td style="padding: 6px 4px; text-align: right; font-weight: 700; color: #0f172a; font-size: 12px;">R$ ${formatCurrency(Number(item.total))}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
+      return `
+        <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #0f172a; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 24px; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+          <!-- Topo Duas Colunas (Empresa vs Cliente/Metadata) -->
+          <div style="display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 18px;">
+            <div style="flex: 1;">
+              ${logoHtml || `<div style="font-size: 20px; font-weight: 900; color: #0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+              <div style="font-size: 11px; color: #64748b; margin-top: 6px; line-height: 1.4;">
+                ${comp.name ? `<strong style="color: #0f172a;">${comp.name}</strong><br/>` : ""}
+                ${comp.cnpj ? `CNPJ: ${comp.cnpj}<br/>` : ""}
+                ${compEndereco ? `${compEndereco}<br/>` : ""}
+                ${compContato || ""}
+              </div>
+            </div>
+            <div style="flex: 1; text-align: right; font-size: 11px;">
+              <div style="font-size: 12px; font-weight: 900; color: #2563eb; text-transform: uppercase; letter-spacing: 1px;">${p.tipo_proposta || "PROPOSTA COMERCIAL"}</div>
+              <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 2px 0;">${p.titulo || "PROPOSTA"}</div>
+              <div style="color: #64748b; margin-bottom: 8px;">Data Emissão: ${dataEmissaoFormatada}</div>
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; text-align: right; line-height: 1.4; display: inline-block;">
+                <span style="color: #64748b;">DESTINATÁRIO:</span> <strong style="color: #0f172a;">${cli.nome || "-"}</strong><br/>
+                <span style="color: #64748b;">CPF/CNPJ:</span> <strong>${cli.cpf_cnpj || "-"}</strong> | <span style="color: #64748b;">TEL:</span> <strong>${cli.telefone || "-"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabela Densa Compacta -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12px;">
+            <thead>
+              <tr style="background: #f1f5f9; color: #0f172a; border-bottom: 2px solid #94a3b8;">
+                <th style="padding: 6px 4px; text-align: left; font-weight: 800; text-transform: uppercase; font-size: 10px;">Item / Descrição</th>
+                <th style="padding: 6px 4px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 50px;">Qtd</th>
+                <th style="padding: 6px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 100px;">Unitário</th>
+                <th style="padding: 6px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 110px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtmlCompacto}
+            </tbody>
+          </table>
+
+          <!-- Total Compacto Inline -->
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 18px; text-align: right; font-size: 12px;">
+            <div style="width: 220px; border-top: 2px solid #0f172a; padding-top: 6px;">
+              ${desc > 0 ? `<div style="color: #dc2626; margin-bottom: 2px; font-weight: 600;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
+              <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 900; color: #0f172a;">
+                <span>TOTAL:</span>
+                <span>R$ ${formatCurrency(finalTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          ${p.observacoes ? `
+          <div style="margin-bottom: 20px; font-size: 11px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 4px;">
+            <strong style="color: #0f172a;">Observações:</strong> ${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
+          </div>
+          ` : ""}
+
+          <!-- Assinaturas compactas -->
+          <div style="margin-top: 25px; font-size: 11px; display: flex; justify-content: space-around; text-align: center;">
+            <div style="width: 200px;">
+              ${comp.assinatura_imagem ? `<img src="${comp.assinatura_imagem}" style="max-height:45px;display:block;margin:0 auto 2px;" />` : `<div style="border-top: 1px solid #94a3b8; margin-top: 25px; margin-bottom: 4px;"></div>`}
+              <strong style="color: #0f172a;">${comp.name || "Empresa"}</strong>
+            </div>
+            <div style="width: 200px;">
+              <div style="border-top: 1px solid #94a3b8; margin-top: 25px; margin-bottom: 4px;"></div>
+              <strong style="color: #0f172a;">${cli.nome || "Cliente"}</strong>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // MODELO 5: LATERAL / SIDEBAR (Split layout com coluna lateral moderna)
+    // =========================================================================
+    if (modelo === "lateral") {
+      const rowsHtmlLateral = (p.proposta_itens || [])
+        .map((item, idx) => {
+          let imgHtml = "";
+          if (item.imagem_url) {
+            let imgSrc = item.imagem_url;
+            if (imgSrc.startsWith("/")) imgSrc = `${window.location.protocol}//${window.location.host}${imgSrc}`;
+            imgHtml = `<br/><img src="${imgSrc}" alt="Item" style="max-height: 60px; max-width: 100px; object-fit: contain; margin-top: 4px;" />`;
+          }
+          return `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 4px; text-align: left;">
+              <span style="color: #2563eb; font-weight: 700; margin-right: 4px;">${idx + 1}.</span>
+              <strong style="color: #0f172a; font-size: 12px;">${item.descricao}</strong>
+              ${imgHtml}
+            </td>
+            <td style="padding: 10px 4px; text-align: center; color: #475569; font-size: 12px;">${item.quantidade}</td>
+            <td style="padding: 10px 4px; text-align: right; color: #475569; font-size: 12px;">R$ ${formatCurrency(Number(item.valor_unitario))}</td>
+            <td style="padding: 10px 4px; text-align: right; font-weight: 700; color: #0f172a; font-size: 12px;">R$ ${formatCurrency(Number(item.total))}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
+      return `
+        <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #1e293b; max-width: 800px; margin: 0 auto; background: #ffffff; border: 1px solid #cbd5e1; display: flex; min-height: 550px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+          <!-- Coluna Lateral Esquerda (Sidebar Destacada) -->
+          <div style="width: 230px; background: #f8fafc; border-right: 2px solid #e2e8f0; padding: 24px 18px; box-sizing: border-box;">
+            <div style="margin-bottom: 20px; text-align: center;">
+              ${logoHtml || `<div style="font-size: 18px; font-weight: 900; color: #0f172a;">${comp.name || "LOGOMARCA"}</div>`}
+            </div>
+            <div style="font-size: 11px; color: #64748b; line-height: 1.5; margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px;">
+              <strong style="color: #0f172a; font-size: 12px; display: block; margin-bottom: 4px;">${comp.name || "Sua Empresa"}</strong>
+              ${comp.cnpj ? `CNPJ: ${comp.cnpj}<br/>` : ""}
+              ${compEndereco ? `${compEndereco}<br/>` : ""}
+              ${compContato || ""}
+            </div>
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; font-size: 11px;">
+              <div style="color: #2563eb; font-weight: 800; text-transform: uppercase; font-size: 10px; letter-spacing: 1px; margin-bottom: 6px;">RESUMO</div>
+              <div style="color: #64748b;">Data Emissão:</div>
+              <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">${dataEmissaoFormatada}</div>
+              ${p.tipo_proposta ? `<div style="color: #64748b;">Tipo:</div><div style="font-weight: 700; color: #2563eb;">${p.tipo_proposta}</div>` : ""}
+            </div>
+          </div>
+
+          <!-- Área Principal Direita -->
+          <div style="flex: 1; padding: 24px 22px; box-sizing: border-box;">
+            <div style="margin-bottom: 20px; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+              <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: #2563eb;">PROPOSTA COMERCIAL</div>
+              <h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 2px 0 0 0;">${p.titulo || "PROPOSTA COMERCIAL"}</h1>
+            </div>
+
+            <!-- Bloco Cliente -->
+            <div style="margin-bottom: 20px; font-size: 12px; border-left: 4px solid #2563eb; padding-left: 12px; background: #f8fafc; padding-top: 10px; padding-bottom: 10px;">
+              <div style="font-size: 10px; font-weight: 800; color: #2563eb; text-transform: uppercase; margin-bottom: 2px;">DADOS DO CLIENTE</div>
+              <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${cli.nome || "-"}</div>
+              <div style="color: #64748b; font-size: 11px;">${cli.cpf_cnpj ? `CPF/CNPJ: ${cli.cpf_cnpj} • ` : ""}${cli.telefone || ""}</div>
+              <div style="color: #64748b; font-size: 11px;">${cliAddressFormat(cliEndereco)}</div>
+            </div>
+
+            <!-- Tabela de Itens -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+              <thead>
+                <tr style="border-bottom: 2px solid #2563eb; color: #2563eb;">
+                  <th style="padding: 8px 4px; text-align: left; font-weight: 800; text-transform: uppercase; font-size: 10px;">Item</th>
+                  <th style="padding: 8px 4px; text-align: center; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 45px;">Qtd</th>
+                  <th style="padding: 8px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 90px;">Unit.</th>
+                  <th style="padding: 8px 4px; text-align: right; font-weight: 800; text-transform: uppercase; font-size: 10px; width: 95px;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtmlLateral}
+              </tbody>
+            </table>
+
+            <!-- Total Badge Azul -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+              <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 10px 16px; border-radius: 6px; text-align: right;">
+                ${desc > 0 ? `<div style="font-size: 11px; color: #dc2626;">Desconto: - R$ ${formatCurrency(desc)}</div>` : ""}
+                <div style="font-size: 10px; color: #1e40af; font-weight: 800; text-transform: uppercase;">VALOR TOTAL</div>
+                <div style="font-size: 22px; font-weight: 900; color: #1e3a8a;">R$ ${formatCurrency(finalTotal)}</div>
+              </div>
+            </div>
+
+            ${p.observacoes ? `
+            <div style="margin-bottom: 24px; font-size: 11px;">
+              <strong style="color: #0f172a; display: block; margin-bottom: 4px;">Observações:</strong>
+              <div style="white-space: pre-wrap; color: #475569; line-height: 1.4;">${p.observacoes.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+            </div>
+            ` : ""}
+
+            <!-- Assinaturas -->
+            <div style="margin-top: 30px; font-size: 11px; display: flex; justify-content: space-between;">
+              <div style="width: 170px; text-align: center;">
+                ${comp.assinatura_imagem ? `<img src="${comp.assinatura_imagem}" style="max-height:45px;display:block;margin:0 auto 2px;" />` : `<div style="border-top: 1px solid #cbd5e1; margin-top: 25px; margin-bottom: 4px;"></div>`}
+                <strong style="color: #0f172a;">${comp.name || "Empresa"}</strong>
+              </div>
+              <div style="width: 170px; text-align: center;">
+                <div style="border-top: 1px solid #cbd5e1; margin-top: 25px; margin-bottom: 4px;"></div>
+                <strong style="color: #0f172a;">${cli.nome || "Cliente"}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
     // MODELO 1: CLÁSSICO / CORPORATIVO TRADICIONAL (DEFAULT)
     // =========================================================================
     const rowsHtml = (p.proposta_itens || [])
